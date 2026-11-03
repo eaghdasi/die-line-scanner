@@ -250,7 +250,8 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
       }
     }
     const coverage = insideCount ? validCount / insideCount : 0;
-    return { score: coverage < 0.05 ? 0 : topMean(contrast, valid, TOP_FRACTION), contrast, valid, coverage };
+    // masked: pixels skipped because of an edge, glare or deep shadow (not the plain border strip), for display.
+    return { score: coverage < 0.05 ? 0 : topMean(contrast, valid, TOP_FRACTION), contrast, valid, masked: bad, coverage };
   }
 
   // Try each candidate direction on the real line analysis and keep the one that finds the strongest lines.
@@ -377,7 +378,7 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     const img = octx.createImageData(f.nw, f.nh), d = img.data;
     for (let i = 0, p = 0; i < f.inside.length; i++, p += 4) {
       if (!f.inside[i]) continue;
-      if (!valid[i]) { d[p] = 70; d[p + 1] = 120; d[p + 2] = 255; d[p + 3] = 28; continue; }   // ignored: edge, glare or shadow
+      if (!valid[i]) { if (R.masked[i]) { d[p] = 70; d[p + 1] = 120; d[p + 2] = 255; d[p + 3] = 28; } continue; }   // ignored: edge, glare or shadow
       const s = Math.min(1, Math.abs(contrast[i]) / VIEW_FULL);
       if (s > 0.1) { d[p] = 255; d[p + 1] = 40; d[p + 2] = 30; d[p + 3] = s * 235; }
     }
@@ -431,7 +432,7 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     const { f, r } = scan(gray, LIVE_W, h, LIVE_PIXELS);
     S.scores.push(r.score); if (S.scores.length > 5) S.scores.shift();
     const score = [...S.scores].sort((a, b) => a - b)[S.scores.length >> 1];
-    show({ kind: 'line', source: work, w: LIVE_W, h, f, theta: S.theta, contrast: r.contrast, valid: r.valid, score, coverage: r.coverage });
+    show({ kind: 'line', source: work, w: LIVE_W, h, f, theta: S.theta, contrast: r.contrast, valid: r.valid, masked: r.masked, score, coverage: r.coverage });
   }
 
   async function startCamera() {
@@ -458,7 +459,7 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     S.still = shot; S.shotB = null; S.mode = 'still';
     const best = orient(shot.gray, shot.w, shot.h, STILL_PIXELS);
     const { f, r } = best || scan(shot.gray, shot.w, shot.h, STILL_PIXELS);
-    show({ kind: 'line', source: shot.canvas, w: shot.w, h: shot.h, f, theta: S.theta, contrast: r.contrast, valid: r.valid, score: r.score, coverage: r.coverage });
+    show({ kind: 'line', source: shot.canvas, w: shot.w, h: shot.h, f, theta: S.theta, contrast: r.contrast, valid: r.valid, masked: r.masked, score: r.score, coverage: r.coverage });
     updateButtons();
   }
 
@@ -468,7 +469,7 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     const A = best ? { f: best.f, r: best.r } : scan(a.gray, a.w, a.h, STILL_PIXELS), B = scan(b.gray, b.w, b.h, STILL_PIXELS);
     const d = Scan.depth(A.r, B.r);
     S.mode = 'depth'; S.step = 0; S.still = a; S.shotB = b;
-    show({ kind: 'depth', source: a.canvas, w: a.w, h: a.h, f: A.f, theta: S.theta, contrast: d.relief, valid: d.valid, depth: d });
+    show({ kind: 'depth', source: a.canvas, w: a.w, h: a.h, f: A.f, theta: S.theta, contrast: d.relief, valid: d.valid, masked: A.r.masked, depth: d });
     updateButtons();
   }
 
