@@ -6,100 +6,70 @@
 <meta name="theme-color" content="#0f1316">
 <title>Die Line Scanner</title>
 <style>
-/* Layout: one column. Verdict on top, picture, quick buttons, then settings. Shop-floor tool. */
+/* Layout: the camera fills the screen. Verdict floats on top, one slider and two buttons sit at the bottom. */
+/* A camera screen is dark by nature, so this page commits to one dark look. */
 :root {
-  --bg: #f3f5f7; --surface: #ffffff; --fg: #15191d; --muted: #5d6874; --line: #d6dce2;
-  --accent: #0b6e7f; --accent-fg: #ffffff; --ok: #1e7f3c; --bad: #c4321f; --warn: #9a5b00;
+  --bg: #0b0e10; --surface: #1a2025; --fg: #f1f4f6; --muted: #a3afb9; --line: #2c353d;
+  --accent: #3bb4c8; --accent-fg: #06171b; --ok: #4cc46f; --bad: #ff6b57; --warn: #e0a64a;
   --font: -apple-system, "Segoe UI", system-ui, sans-serif;
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --bg: #0f1316; --surface: #1a2025; --fg: #eef2f5; --muted: #9aa6b1; --line: #2c353d;
-    --accent: #3bb4c8; --accent-fg: #07181c; --ok: #4cc46f; --bad: #ff6b57; --warn: #e0a64a; color-scheme: dark;
-  }
-}
-:root[data-theme="dark"] {
-  --bg: #0f1316; --surface: #1a2025; --fg: #eef2f5; --muted: #9aa6b1; --line: #2c353d;
-  --accent: #3bb4c8; --accent-fg: #07181c; --ok: #4cc46f; --bad: #ff6b57; --warn: #e0a64a; color-scheme: dark;
+  color-scheme: dark;
 }
 * { box-sizing: border-box; }
-html { -webkit-tap-highlight-color: transparent; -webkit-text-size-adjust: 100%; }
-body { background: var(--bg); color: var(--fg); font: 16px/1.45 var(--font); margin: 0;
-       padding-block: 12px 32px; padding-left: max(16px, env(safe-area-inset-left, 0px));
-       padding-right: max(16px, env(safe-area-inset-right, 0px)); }
-.wrap { max-width: 640px; margin: 0 auto; display: grid; gap: 12px; }
-.top { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
-#verdict { font-size: 20px; font-weight: 700; text-wrap: balance; }
-#score { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 14px; }
-.stage { background: #000; border-radius: 12px; overflow: hidden; display: grid; place-items: center; min-height: 140px; }
-.stage canvas { width: 100%; height: auto; max-height: 62dvh; object-fit: contain; display: block; touch-action: none; }
-.stage .empty { padding: 24px; color: #aab4bd; text-align: center; }
-#hint { color: var(--muted); font-size: 14px; min-height: 1.4em; margin: 0; }
+html { -webkit-tap-highlight-color: transparent; -webkit-text-size-adjust: 100%; overscroll-behavior: none; background: var(--bg); }
+body { background: var(--bg); color: var(--fg); font: 16px/1.4 var(--font); margin: 0;
+       height: 100dvh; display: flex; flex-direction: column; overflow: hidden; }
+.stage { position: relative; flex: 1; min-height: 0; background: #000; }
+.stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; touch-action: none; }
+.empty { position: absolute; inset: 0; display: grid; place-items: center; padding: 24px; color: var(--muted); text-align: center; }
+.top { position: absolute; top: 0; left: 0; right: 0; display: flex; justify-content: space-between; align-items: baseline; gap: 12px;
+       padding: calc(10px + env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) 24px max(16px, env(safe-area-inset-left, 0px));
+       background: linear-gradient(rgba(0,0,0,.65), rgba(0,0,0,0)); pointer-events: none; }
+#verdict { font-size: 22px; font-weight: 700; text-wrap: balance; text-shadow: 0 1px 4px rgba(0,0,0,.6); }
+#score { color: #d5dce2; font-size: 14px; font-variant-numeric: tabular-nums; text-shadow: 0 1px 4px rgba(0,0,0,.6); white-space: nowrap; }
+#hint { position: absolute; left: max(16px, env(safe-area-inset-left, 0px)); right: max(16px, env(safe-area-inset-right, 0px)); bottom: 10px; margin: 0;
+        padding: 8px 12px; border-radius: 10px; background: rgba(0,0,0,.7); font-size: 14px; }
 #hint.warn { color: var(--warn); }
-.btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.btn, button { display: flex; align-items: center; justify-content: center; min-height: 48px; border-radius: 10px; padding: 8px 10px;
-       font: inherit; font-weight: 600; text-align: center; cursor: pointer; touch-action: manipulation;
-       user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
-       border: 1px solid var(--line); background: var(--surface); color: var(--fg);
-       transition: transform 100ms ease-out; }
-.btn.primary, button.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
-button[aria-pressed="true"] { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
-.btn:active, button:active { transform: scale(.97); }
+.bar { background: var(--surface); border-top: 1px solid var(--line); display: grid; gap: 10px;
+       padding: 12px max(16px, env(safe-area-inset-right, 0px)) calc(12px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); }
+.slider { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px; color: var(--muted); font-size: 14px; }
+input[type=range] { width: 100%; min-width: 0; accent-color: var(--accent); margin: 0; }
+.btns { display: flex; gap: 8px; }
+button { flex: 1; min-height: 48px; border-radius: 10px; padding: 8px 10px; font: inherit; font-weight: 600;
+         border: 1px solid var(--line); background: var(--bg); color: var(--fg); cursor: pointer; touch-action: manipulation;
+         user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; transition: transform 100ms ease-out; }
+button.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); flex: 1.4; }
+button:active { transform: scale(.97); }
 button:disabled { opacity: .5; }
-.btn input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
-.btn:focus-within, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px; display: grid; gap: 14px; }
-.slider label { display: flex; justify-content: space-between; font-weight: 600; font-size: 15px; }
-.slider output { font-variant-numeric: tabular-nums; color: var(--muted); font-weight: 400; }
-.slider small { display: block; color: var(--muted); font-size: 13px; margin-top: 2px; }
-input[type=range] { width: 100%; min-width: 0; accent-color: var(--accent); margin: 6px 0 0; }
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 [hidden] { display: none !important; }
-@media (prefers-reduced-motion: reduce) { .btn, button { transition: none; } }
+@media (prefers-reduced-motion: reduce) { button { transition: none; } }
 </style>
 </head>
 <body>
-<div class="wrap">
-  <div class="top"><span id="verdict">Starting...</span><span id="score"></span></div>
-
-  <div class="stage"><canvas id="view" hidden></canvas><div class="empty" id="empty">Starting the camera...</div></div>
-  <p id="hint"></p>
-
-  <div class="btns">
-    <button id="capture" class="primary">Capture</button>
-    <button id="depth">Depth check (2 lights)</button>
-    <label class="btn" for="lib">Choose photo<input id="lib" type="file" accept="image/*"></label>
-    <button id="lens" hidden></button>
-    <button id="live" hidden>Back to live</button>
-    <button id="send" hidden>Send to Claude</button>
-    <button id="clean">Set as clean</button>
-    <button id="angle">Line angle: auto</button>
-    <button id="filter" aria-pressed="true">Red overlay on</button>
+<div class="stage">
+  <canvas id="view" hidden></canvas>
+  <div class="empty" id="empty">Starting the camera...</div>
+  <div class="top"><span id="verdict"></span><span id="score"></span></div>
+  <p id="hint" hidden></p>
+</div>
+<div class="bar">
+  <div class="slider">
+    <span>Less strict</span>
+    <input id="sens" type="range" min="1" max="10" step="0.5" value="4" aria-label="Sensitivity">
+    <span>More strict</span>
   </div>
-  <input id="cam" type="file" accept="image/*" capture="environment" hidden>
-
-  <div class="panel">
-    <div class="slider">
-      <label for="limit">Reject above <output id="limitV"></output></label>
-      <input id="limit" type="range" min="0.2" max="10" step="0.1" value="3">
-      <small>Pass or fail line. If the line score is higher than this, the part is flagged. Use Set as clean on a good part to set it.</small>
-    </div>
-    <div class="slider">
-      <label for="gain">Overlay strength <output id="gainV"></output></label>
-      <input id="gain" type="range" min="1" max="30" value="10">
-      <small>How strongly lines are painted red. It only changes the picture, not the score.</small>
-    </div>
-    <div class="slider">
-      <label for="size">Scan square size <output id="sizeV"></output></label>
-      <input id="size" type="range" min="25" max="90" value="60">
-      <small>Tap the picture to move the square onto a flat face of the profile. Keep ribs, corners and glare outside it.</small>
-    </div>
+  <div class="btns">
+    <button id="main" class="primary">Capture</button>
+    <button id="depth">Depth check</button>
+    <button id="send" hidden>Send to Claude</button>
   </div>
 </div>
+<input id="cam" type="file" accept="image/*" capture="environment" hidden>
 <script>
 // Die line analysis. Pure functions, no DOM, so they can be tested in Node.
 //
-// A "field" is a square patch of brightness values, rotated so the extrusion
-// lines run left to right. Everything below assumes that.
+// The whole picture is scanned. It is turned so the lines run left to right
+// (a "field"), then each pixel gets a signed line signal.
 (function (root) {
   'use strict';
 
@@ -109,40 +79,70 @@ input[type=range] { width: 100%; min-width: 0; accent-color: var(--accent); marg
   const EDGE_LIMIT = 0.07;    // a brightness step bigger than this across a few pixels is an edge, not a line
   const DARK = 10, BRIGHT = 245;
 
+  const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
+
   function toGray(rgba, count) {
     const g = new Uint8ClampedArray(count);
     for (let i = 0, p = 0; i < count; i++, p += 4) g[i] = (rgba[p] * 77 + rgba[p + 1] * 150 + rgba[p + 2] * 29) >> 8;
     return g;
   }
 
-  // Sample an n*n patch of side `size` centred on (cx, cy), turned by theta radians.
-  function sampleRotated(gray, w, h, cx, cy, size, theta, n) {
-    const out = new Float32Array(n * n);
-    const c = Math.cos(theta), s = Math.sin(theta), step = size / n, half = size / 2;
+  // Turn the whole picture by theta radians so lines run left to right.
+  // Returns the turned picture (field) and a mask of which pixels came from inside the picture.
+  // scale < 1 shrinks it to stay under maxPixels.
+  function sampleRect(gray, w, h, theta, maxPixels) {
+    const c = Math.cos(theta), s = Math.sin(theta);
+    const bw = Math.abs(w * c) + Math.abs(h * s), bh = Math.abs(w * s) + Math.abs(h * c);
+    const scale = Math.min(1, Math.sqrt(maxPixels / (bw * bh)));
+    const nw = Math.max(16, Math.round(bw * scale)), nh = Math.max(16, Math.round(bh * scale));
+    const field = new Float32Array(nw * nh), inside = new Uint8Array(nw * nh);
+    const step = 1 / scale, cx = w / 2, cy = h / 2;
     let k = 0;
-    for (let j = 0; j < n; j++) {
-      const v = (j + 0.5) * step - half;
-      for (let i = 0; i < n; i++, k++) {
-        const u = (i + 0.5) * step - half;
-        let x = cx + u * c - v * s - 0.5, y = cy + u * s + v * c - 0.5;
-        if (x < 0) x = 0; else if (x > w - 1.001) x = w - 1.001;
-        if (y < 0) y = 0; else if (y > h - 1.001) y = h - 1.001;
+    for (let j = 0; j < nh; j++) {
+      const v = (j + 0.5 - nh / 2) * step;
+      for (let i = 0; i < nw; i++, k++) {
+        const u = (i + 0.5 - nw / 2) * step;
+        const px = cx + u * c - v * s, py = cy + u * s + v * c;
+        inside[k] = px >= 0 && px < w && py >= 0 && py < h ? 1 : 0;
+        const x = clamp(px - 0.5, 0, w - 1.001), y = clamp(py - 0.5, 0, h - 1.001);
         const x0 = x | 0, y0 = y | 0, fx = x - x0, fy = y - y0, p = y0 * w + x0;
-        out[k] = (gray[p] * (1 - fx) + gray[p + 1] * fx) * (1 - fy) + (gray[p + w] * (1 - fx) + gray[p + w + 1] * fx) * fy;
+        field[k] = (gray[p] * (1 - fx) + gray[p + 1] * fx) * (1 - fy) + (gray[p + w] * (1 - fx) + gray[p + w + 1] * fx) * fy;
       }
     }
-    return out;
+    return { field, inside, nw, nh, scale };
   }
 
-  function blurRows(src, dst, n, len) {
+  // The direction the lines run, from the picture's overall grain, as radians in [0, PI).
+  // coherence is 0 for random texture and near 1 for clear parallel lines.
+  function dominantAngle(gray, w, h) {
+    const CAP = 120, FLOOR = 8;   // Sobel gradients are 4 times a plain difference
+    let sxx = 0, sxy = 0, total = 0;
+    for (let y = 1; y < h - 1; y++) {
+      for (let x = 1; x < w - 1; x++) {
+        const i = y * w + x;
+        let gx = gray[i - w + 1] + 2 * gray[i + 1] + gray[i + w + 1] - gray[i - w - 1] - 2 * gray[i - 1] - gray[i + w - 1];
+        let gy = gray[i + w - 1] + 2 * gray[i + w] + gray[i + w + 1] - gray[i - w - 1] - 2 * gray[i - w] - gray[i - w + 1];
+        const mag = Math.sqrt(gx * gx + gy * gy);
+        if (mag < FLOOR) continue;
+        if (mag > CAP) { gx *= CAP / mag; gy *= CAP / mag; }   // so one big edge cannot outvote the fine lines
+        sxx += gx * gx - gy * gy; sxy += 2 * gx * gy; total += gx * gx + gy * gy;
+      }
+    }
+    if (!total) return { theta: 0, deg: 0, coherence: 0 };
+    const gradient = 0.5 * Math.atan2(sxy, sxx);            // direction the brightness changes fastest
+    const theta = (gradient + Math.PI / 2 + Math.PI) % Math.PI;   // lines run at right angles to that
+    return { theta, deg: theta * 180 / Math.PI, coherence: Math.sqrt(sxx * sxx + sxy * sxy) / total };
+  }
+
+  function blurRows(src, dst, nw, nh, len) {
     const half = len >> 1;
-    for (let j = 0; j < n; j++) {
-      const base = j * n;
+    for (let j = 0; j < nh; j++) {
+      const base = j * nw;
       let sum = 0, cnt = 0;
-      for (let i = 0; i < Math.min(half, n); i++) { sum += src[base + i]; cnt++; }
-      for (let i = 0; i < n; i++) {
+      for (let i = 0; i < Math.min(half, nw); i++) { sum += src[base + i]; cnt++; }
+      for (let i = 0; i < nw; i++) {
         const add = i + half, rem = i - half - 1;
-        if (add < n) { sum += src[base + add]; cnt++; }
+        if (add < nw) { sum += src[base + add]; cnt++; }
         if (rem >= 0) { sum -= src[base + rem]; cnt--; }
         dst[base + i] = sum / cnt;
       }
@@ -172,82 +172,66 @@ input[type=range] { width: 100%; min-width: 0; accent-color: var(--accent); marg
     return acc / taken;
   }
 
+  // field: nw*nh brightness values with lines running left to right. inside: 1 where the pixel is real picture.
   // Returns { score, contrast, valid, coverage }.
   //   contrast: signed line signal per pixel, as a fraction of local brightness.
-  //   valid:    1 where the pixel counts. Edges, glare, shadow and borders are 0.
+  //   valid:    1 where the pixel counts. Edges, glare, deep shadow and borders are 0.
   //   score:    strength of the strongest lines, as a fraction (0.02 = 2%).
-  function analyseField(field, n, opts) {
+  //   coverage: share of the real picture that counted.
+  function analyseField(field, nw, nh, opts, inside) {
     const o = Object.assign({
-      along: Math.max(9, Math.round(n * 0.06)),   // how far to average along a line (keeps long streaks, drops noise)
-      across: Math.max(2, Math.round(n * 0.012)), // how far to compare across lines
+      along: clamp(Math.round(nh * 0.05), 9, 41),    // how far to average along a line (keeps long streaks, drops noise)
+      across: clamp(Math.round(nh * 0.012), 2, 8),   // how far to compare across lines
     }, opts);
     const k = o.across, k2 = Math.max(4, k * 2), L = o.along;
 
-    const smooth = new Float32Array(n * n);
-    blurRows(field, smooth, n, L);
+    const smooth = new Float32Array(nw * nh);
+    blurRows(field, smooth, nw, nh, L);
 
-    const contrast = new Float32Array(n * n);
-    const bad = new Uint8Array(n * n);
-    const P = new Float64Array(n + 1);
-    const edge = new Uint8Array(n);
+    const contrast = new Float32Array(nw * nh);
+    const bad = new Uint8Array(nw * nh);
+    const P = new Float64Array(nh + 1);
+    const edge = new Uint8Array(nh);
 
-    for (let i = 0; i < n; i++) {
+    for (let i = 0; i < nw; i++) {
       P[0] = 0;
-      for (let j = 0; j < n; j++) P[j + 1] = P[j] + smooth[j * n + i];
+      for (let j = 0; j < nh; j++) P[j + 1] = P[j] + smooth[j * nw + i];
       edge.fill(0);
-      for (let j = 0; j < n; j++) {
-        const a = Math.max(0, j - k), b = Math.min(n, j + k + 1);
+      for (let j = 0; j < nh; j++) {
+        const a = Math.max(0, j - k), b = Math.min(nh, j + k + 1);
         const local = (P[b] - P[a]) / (b - a);
-        contrast[j * n + i] = (smooth[j * n + i] - local) / (local + 8);
-        if (local < DARK || local > BRIGHT) bad[j * n + i] = 1;
+        const idx = j * nw + i;
+        contrast[idx] = (smooth[idx] - local) / (local + 8);
+        if (local < DARK || local > BRIGHT) bad[idx] = 1;
 
         // Edge test: compare the mean just below with the mean just above.
-        const b0 = j + 1, b1 = Math.min(n, j + k2 + 1), a0 = Math.max(0, j - k2), a1 = j;
+        const b0 = j + 1, b1 = Math.min(nh, j + k2 + 1), a0 = Math.max(0, j - k2), a1 = j;
         if (b1 > b0 && a1 > a0) {
           const below = (P[b1] - P[b0]) / (b1 - b0), above = (P[a1] - P[a0]) / (a1 - a0);
           if (Math.abs(below - above) / (local + 8) > EDGE_LIMIT) edge[j] = 1;
         }
       }
-      for (let j = 0; j < n; j++) {
+      for (let j = 0; j < nh; j++) {
         if (!edge[j]) continue;
-        for (let t = Math.max(0, j - k); t <= Math.min(n - 1, j + k); t++) bad[t * n + i] = 1;
+        for (let t = Math.max(0, j - k); t <= Math.min(nh - 1, j + k); t++) bad[t * nw + i] = 1;
       }
     }
 
-    // Borders, where the averaging windows are cut short.
+    // Borders, where the averaging windows are cut short, and anything outside the real picture.
     const mx = L >> 1, my = k2;
-    let validCount = 0;
-    const valid = new Uint8Array(n * n);
-    for (let j = 0; j < n; j++) {
-      for (let i = 0; i < n; i++) {
-        const idx = j * n + i;
-        if (i < mx || i >= n - mx || j < my || j >= n - my || bad[idx]) continue;
+    const valid = new Uint8Array(nw * nh);
+    let validCount = 0, insideCount = 0;
+    for (let j = 0; j < nh; j++) {
+      for (let i = 0; i < nw; i++) {
+        const idx = j * nw + i;
+        const real = inside ? inside[idx] : 1;
+        insideCount += real;
+        if (!real || i < mx || i >= nw - mx || j < my || j >= nh - my || bad[idx]) continue;
         valid[idx] = 1; validCount++;
       }
     }
-    const coverage = validCount / (n * n);
-    return { score: validCount < n * n * 0.05 ? 0 : topMean(contrast, valid, TOP_FRACTION), contrast, valid, coverage };
-  }
-
-  // Find the angle (0 to 180 degrees) at which the lines run, by trying angles and keeping the strongest.
-  // With opts.around (degrees) it only checks a few angles near that one, which is much cheaper.
-  function findAngle(gray, w, h, cx, cy, size, opts) {
-    const n = 192;
-    const wrap = (d) => ((d % 180) + 180) % 180;
-    let best = { deg: 0, theta: 0, score: -1 };
-    const test = (deg) => {
-      const theta = deg * Math.PI / 180;
-      const r = analyseField(sampleRotated(gray, w, h, cx, cy, size, theta, n), n);
-      if (r.score > best.score) best = { deg, theta, score: r.score };
-    };
-    if (opts && typeof opts.around === 'number') {
-      for (const dd of [0, -4, 4, -8, 8]) test(wrap(opts.around + dd));
-      return best;
-    }
-    for (let d = 0; d < 180; d += 15) test(d);
-    const centre = best.deg;
-    for (const dd of [-10, -5, 5, 10]) test(wrap(centre + dd));
-    return best;
+    const coverage = insideCount ? validCount / insideCount : 0;
+    return { score: coverage < 0.05 ? 0 : topMean(contrast, valid, TOP_FRACTION), contrast, valid, coverage };
   }
 
   // Two photos of the same spot with the light from opposite sides.
@@ -266,7 +250,7 @@ input[type=range] { width: 100%; min-width: 0; accent-color: var(--accent); marg
       grooveShare: reliefScore / (reliefScore + stainScore + 1e-9) };
   }
 
-  const api = { toGray, sampleRotated, analyseField, findAngle, depth };
+  const api = { toGray, sampleRect, dominantAngle, analyseField, depth };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.Scan = api;
 })(typeof self !== 'undefined' ? self : this);
@@ -275,29 +259,30 @@ input[type=range] { width: 100%; min-width: 0; accent-color: var(--accent); marg
   'use strict';
   const $ = (id) => document.getElementById(id);
   const view = $('view'), vctx = view.getContext('2d');
-  const LIVE_W = 640, LIVE_N = 256, STILL_MAX_W = 1920, STILL_N = 640;
+  const LIVE_W = 512, LIVE_PIXELS = 330000, STILL_MAX_W = 1600, STILL_PIXELS = 2000000;
   const work = document.createElement('canvas'), wctx = work.getContext('2d', { willReadFrequently: true });
   const ovl = document.createElement('canvas'), octx = ovl.getContext('2d');
   const video = document.createElement('video');
   video.muted = true; video.playsInline = true; video.setAttribute('playsinline', '');
 
   const S = {
-    cam: false, mode: 'live',            // live | still | depth
-    angleMode: 'auto', ang: 0, angDeg: 0,
-    cx: 0.5, cy: 0.5,                    // scan square centre, as a fraction of the picture
-    filtered: true, still: null, shotA: null, shotB: null, step: 0,
-    scores: [], last: 0, lastAngle: -1e9, lastFull: -1e9, render: null, pending: null, assets: null,
-    cams: [], camIndex: 0, stream: null,
+    cam: false, mode: 'live',                 // live | still | depth
+    vx: 0, vy: 0, haveAngle: false, theta: 0, // line direction, smoothed over frames
+    still: null, shotA: null, shotB: null, step: 0,   // step: 0 normal, 1 and 2 = depth check shots
+    scores: [], last: 0, lastAngle: -1e9, render: null, pending: null, assets: null,
   };
 
-  const pct = (f) => f * 100;
-  const limitPct = () => +$('limit').value;
-  const hint = (text, warn) => { $('hint').textContent = text || ''; $('hint').classList.toggle('warn', !!warn); };
+  // The one slider. Higher means stricter: a lower line score is enough to flag.
+  const limit = () => 12 / +$('sens').value;     // in percent
+
+  function hint(text, warn) {
+    $('hint').hidden = !text; $('hint').textContent = text || ''; $('hint').classList.toggle('warn', !!warn);
+  }
 
   // ---- pictures -------------------------------------------------------------------------
 
-  function makeShot(source, sw, sh, maxW) {
-    const scale = Math.min(1, maxW / sw), w = Math.round(sw * scale), h = Math.round(sh * scale);
+  function makeShot(source, sw, sh) {
+    const scale = Math.min(1, STILL_MAX_W / sw), w = Math.round(sw * scale), h = Math.round(sh * scale);
     const canvas = document.createElement('canvas');
     canvas.width = w; canvas.height = h;
     const c = canvas.getContext('2d', { willReadFrequently: true });
@@ -316,57 +301,51 @@ input[type=range] { width: 100%; min-width: 0; accent-color: var(--accent); marg
         im.src = u;
       });
     }
-    return makeShot(bmp, bmp.width, bmp.height, STILL_MAX_W);
+    return makeShot(bmp, bmp.width, bmp.height);
   }
 
-  const shotFromVideo = () => makeShot(video, video.videoWidth, video.videoHeight, STILL_MAX_W);
-
-  // Get a new picture: a frame from the camera, or a photo from the phone's camera app.
+  // A new picture: a frame from the camera, or a photo from the phone's camera app.
   function acquire() {
-    if (S.cam) return Promise.resolve(shotFromVideo());
+    if (S.cam) return Promise.resolve(makeShot(video, video.videoWidth, video.videoHeight));
     return new Promise((resolve) => { S.pending = resolve; $('cam').click(); });
   }
 
   // ---- analysis -------------------------------------------------------------------------
 
-  function geometry(w, h) {
-    const size = (+$('size').value / 100) * Math.min(w, h);
-    const cx = Math.min(Math.max(S.cx * w, size / 2), w - size / 2);
-    const cy = Math.min(Math.max(S.cy * h, size / 2), h - size / 2);
-    return { size, cx, cy };
+  function updateAngle(gray, w, h, fresh) {
+    const a = Scan.dominantAngle(gray, w, h);
+    if (a.coherence < 0.05 && S.haveAngle) return;       // no clear lines in view: keep the last direction
+    const k = fresh || !S.haveAngle ? 1 : 0.35;
+    S.vx = (1 - k) * S.vx + k * Math.cos(2 * a.theta);
+    S.vy = (1 - k) * S.vy + k * Math.sin(2 * a.theta);
+    S.haveAngle = true;
+    S.theta = ((0.5 * Math.atan2(S.vy, S.vx)) + Math.PI) % Math.PI;
   }
 
-  // how: 'full' searches every angle, 'refine' checks a few near the last one, 'keep' reuses it.
-  function chooseAngle(gray, w, h, g, how) {
-    if (S.angleMode !== 'auto') { S.angDeg = S.angleMode; S.ang = S.angDeg * Math.PI / 180; return; }
-    if (how === 'keep') return;
-    const a = Scan.findAngle(gray, w, h, g.cx, g.cy, g.size, how === 'refine' ? { around: S.angDeg } : undefined);
-    S.ang = a.theta; S.angDeg = a.deg;
+  function scan(gray, w, h, pixels) {
+    const f = Scan.sampleRect(gray, w, h, S.theta, pixels);
+    const r = Scan.analyseField(f.field, f.nw, f.nh, undefined, f.inside);
+    return { f, r };
   }
-
-  function field(shot, g, n) { return Scan.sampleRotated(shot.gray, shot.w, shot.h, g.cx, g.cy, g.size, S.ang, n); }
 
   // ---- drawing --------------------------------------------------------------------------
 
   function paint(R) {
-    const { source, w, h, contrast, valid, n, g } = R;
+    const { source, w, h, f, contrast, valid } = R;
     if (view.width !== w || view.height !== h) { view.width = w; view.height = h; }
     vctx.drawImage(source, 0, 0, w, h);
-    if (ovl.width !== n) { ovl.width = ovl.height = n; }
-    if (S.filtered) {
-      const img = octx.createImageData(n, n), d = img.data, gain = +$('gain').value * 2.5;
-      for (let i = 0, p = 0; i < n * n; i++, p += 4) {
-        if (!valid[i]) { d[p] = 70; d[p + 1] = 120; d[p + 2] = 255; d[p + 3] = 55; continue; }
-        const s = Math.min(1, Math.abs(contrast[i]) * gain);
-        d[p] = 255; d[p + 1] = 40; d[p + 2] = 30; d[p + 3] = s * 235;
-      }
-      octx.putImageData(img, 0, 0);
+    if (ovl.width !== f.nw || ovl.height !== f.nh) { ovl.width = f.nw; ovl.height = f.nh; }
+    const img = octx.createImageData(f.nw, f.nh), d = img.data, lim = limit() / 100;
+    for (let i = 0, p = 0; i < f.inside.length; i++, p += 4) {
+      if (!f.inside[i]) continue;
+      if (!valid[i]) { d[p] = 70; d[p + 1] = 120; d[p + 2] = 255; d[p + 3] = 40; continue; }   // ignored: edge, glare or shadow
+      const s = Math.min(1, Math.abs(contrast[i]) / lim);
+      d[p] = 255; d[p + 1] = 40; d[p + 2] = 30; d[p + 3] = s * s * 230;
     }
+    octx.putImageData(img, 0, 0);
     vctx.save();
-    vctx.translate(g.cx, g.cy); vctx.rotate(S.ang);
-    if (S.filtered) vctx.drawImage(ovl, -g.size / 2, -g.size / 2, g.size, g.size);
-    vctx.lineWidth = Math.max(2, w / 320); vctx.strokeStyle = 'rgba(255,255,255,.85)';
-    vctx.strokeRect(-g.size / 2, -g.size / 2, g.size, g.size);
+    vctx.translate(w / 2, h / 2); vctx.rotate(R.theta);
+    vctx.drawImage(ovl, -f.nw / (2 * f.scale), -f.nh / (2 * f.scale), f.nw / f.scale, f.nh / f.scale);
     vctx.restore();
   }
 
@@ -377,136 +356,100 @@ input[type=range] { width: 100%; min-width: 0; accent-color: var(--accent); marg
   function show(R) {
     S.render = R;
     paint(R);
-    const lim = limitPct();
+    const lim = limit();
     if (R.kind === 'depth') {
-      const rel = pct(R.depth.reliefScore), stn = pct(R.depth.stainScore);
-      const text = rel > lim ? 'Cut into the surface (groove)' : stn > lim ? 'Surface marks only, not cut in' : 'Looks clean';
+      const rel = R.depth.reliefScore * 100, stn = R.depth.stainScore * 100;
+      const text = rel > lim ? 'Cut into the surface' : stn > lim ? 'Surface marks only' : 'Looks clean';
       verdict(text, rel > lim ? 'var(--bad)' : stn > lim ? 'var(--warn)' : 'var(--ok)',
-        'Groove ' + rel.toFixed(1) + '%   Surface marks ' + stn.toFixed(1) + '%');
-      hint('Red shows what flipped with the light, which means it has depth. Marks that did not flip are not counted.');
+        'Depth ' + rel.toFixed(1) + '%  Marks ' + stn.toFixed(1) + '%');
+      if (!S.step) hint('Red = lines that flipped with the light, so they have depth.');
     } else {
-      const sc = pct(R.score), bad = sc > lim;
-      verdict(bad ? 'Die lines likely' : 'Looks clean', bad ? 'var(--bad)' : 'var(--ok)',
-        'Line score ' + sc.toFixed(1) + '% (reject above ' + lim.toFixed(1) + '%)  angle ' + Math.round(S.angDeg) + '°');
-      if (S.step) { /* keep the depth-check instructions on screen */ }
-      else if (R.coverage < 0.35) hint('Most of the square is edge, glare or shadow (blue). Move it onto a flat face.', true);
-      else if (S.mode === 'live') hint('Aim, then tap Capture for a sharper reading. Tap the picture to move the square.');
-      else hint('Tap the picture to move the square. Use Depth check to tell real grooves from marks.');
+      const sc = R.score * 100, bad = sc > lim;
+      verdict(bad ? 'Die lines likely' : 'Looks clean', bad ? 'var(--bad)' : 'var(--ok)', 'Score ' + sc.toFixed(1) + '% / ' + lim.toFixed(1) + '%');
+      if (!S.step) hint(R.coverage < 0.25 ? 'Most of the picture is edge, glare or shadow (blue). Move closer to a flat face.' : '', true);
     }
     $('send').disabled = false;
+  }
+
+  function updateButtons() {
+    $('main').textContent = S.step ? 'Shot ' + S.step + ' of 2'
+      : S.cam ? (S.mode === 'live' ? 'Capture' : 'Back to live') : 'Take photo';
+    $('depth').textContent = S.step ? 'Cancel' : 'Depth check';
   }
 
   // ---- live camera ----------------------------------------------------------------------
 
   function tick(t) {
     requestAnimationFrame(tick);
-    if (S.mode !== 'live' || !video.videoWidth || t - S.last < 66) return;
+    if (S.mode !== 'live' || !video.videoWidth || t - S.last < 80) return;
     S.last = t;
     const h = Math.round(LIVE_W * video.videoHeight / video.videoWidth);
     if (work.width !== LIVE_W || work.height !== h) { work.width = LIVE_W; work.height = h; }
     wctx.drawImage(video, 0, 0, LIVE_W, h);
     const gray = Scan.toGray(wctx.getImageData(0, 0, LIVE_W, h).data, LIVE_W * h);
-    const shot = { gray, w: LIVE_W, h, canvas: work };
-    const g = geometry(LIVE_W, h);
-    let how = 'keep';
-    if (t - S.lastFull > 6000) { how = 'full'; S.lastFull = S.lastAngle = t; }
-    else if (t - S.lastAngle > 700) { how = 'refine'; S.lastAngle = t; }
-    chooseAngle(gray, LIVE_W, h, g, how);
-    const r = Scan.analyseField(field(shot, g, LIVE_N), LIVE_N);
+    if (t - S.lastAngle > 500) { updateAngle(gray, LIVE_W, h, false); S.lastAngle = t; }
+    const { f, r } = scan(gray, LIVE_W, h, LIVE_PIXELS);
     S.scores.push(r.score); if (S.scores.length > 5) S.scores.shift();
-    const med = [...S.scores].sort((a, b) => a - b)[S.scores.length >> 1];
-    show({ kind: 'line', source: work, w: LIVE_W, h, contrast: r.contrast, valid: r.valid, n: LIVE_N, g, score: med, coverage: r.coverage });
+    const score = [...S.scores].sort((a, b) => a - b)[S.scores.length >> 1];
+    show({ kind: 'line', source: work, w: LIVE_W, h, f, theta: S.theta, contrast: r.contrast, valid: r.valid, score, coverage: r.coverage });
   }
 
-  async function startCamera(deviceId) {
+  async function startCamera() {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error('no camera api');
-    if (S.stream) S.stream.getTracks().forEach((t) => t.stop());
-    const video_ = { width: { ideal: 1920 }, height: { ideal: 1080 } };
-    if (deviceId) video_.deviceId = { exact: deviceId }; else video_.facingMode = { ideal: 'environment' };
-    S.stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: video_ });
-    video.srcObject = S.stream;
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: false,
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } } });
+    video.srcObject = stream;
     await video.play();
     S.cam = true;
-    try {
-      const all = await navigator.mediaDevices.enumerateDevices();
-      S.cams = all.filter((d) => d.kind === 'videoinput' && !/front|user/i.test(d.label));
-      const active = S.stream.getVideoTracks()[0].getSettings().deviceId;
-      S.camIndex = Math.max(0, S.cams.findIndex((d) => d.deviceId === active));
-    } catch (e) { S.cams = []; }
-    updateCameraButton();
-  }
-
-  function updateCameraButton() {
-    const b = $('lens');
-    b.hidden = !(S.cam && S.cams.length > 1);
-    if (!b.hidden) b.textContent = 'Lens: ' + (S.cams[S.camIndex].label.replace(/^back\s*/i, '').replace(/camera/i, '').trim() || 'main');
   }
 
   function noCamera(reason) {
     S.cam = false; S.mode = 'still';
+    updateButtons();
+    if (S.render) return;   // a photo was already taken while the camera request was pending: keep its result
     $('empty').textContent = reason; $('empty').hidden = false;
-    $('capture').textContent = 'Take photo';
     verdict('Take a photo to start', 'var(--fg)', '');
-    hint('Live view is not available here. Take photos instead. They are analysed at full quality.');
   }
 
   // ---- actions --------------------------------------------------------------------------
 
-  function analyseStill(shot) {
-    const g = geometry(shot.w, shot.h);
-    chooseAngle(shot.gray, shot.w, shot.h, g, 'full');
-    const r = Scan.analyseField(field(shot, g, STILL_N), STILL_N);
-    S.mode = 'still';
-    show({ kind: 'line', source: shot.canvas, w: shot.w, h: shot.h, contrast: r.contrast, valid: r.valid, n: STILL_N, g, score: r.score, coverage: r.coverage });
-  }
-
   function useShot(shot) {
     $('empty').hidden = true; view.hidden = false;
-    S.still = shot;
-    analyseStill(shot);
-    $('live').hidden = !S.cam;
+    S.still = shot; S.shotB = null; S.mode = 'still';
+    updateAngle(shot.gray, shot.w, shot.h, true);
+    const { f, r } = scan(shot.gray, shot.w, shot.h, STILL_PIXELS);
+    show({ kind: 'line', source: shot.canvas, w: shot.w, h: shot.h, f, theta: S.theta, contrast: r.contrast, valid: r.valid, score: r.score, coverage: r.coverage });
+    updateButtons();
   }
 
   function finishDepth(a, b) {
-    if (a.w !== b.w || a.h !== b.h) { hint('The two photos are different sizes. Take both again.', true); S.step = 0; return; }
-    const g = geometry(a.w, a.h);
-    chooseAngle(a.gray, a.w, a.h, g, 'full');
-    const ra = Scan.analyseField(field(a, g, STILL_N), STILL_N), rb = Scan.analyseField(field(b, g, STILL_N), STILL_N);
-    const d = Scan.depth(ra, rb);
+    if (a.w !== b.w || a.h !== b.h) { hint('The two photos are different sizes. Take both again.', true); S.step = 0; updateButtons(); return; }
+    updateAngle(a.gray, a.w, a.h, true);
+    const A = scan(a.gray, a.w, a.h, STILL_PIXELS), B = scan(b.gray, b.w, b.h, STILL_PIXELS);
+    const d = Scan.depth(A.r, B.r);
     S.mode = 'depth'; S.step = 0; S.still = a; S.shotB = b;
-    $('depth').textContent = 'Depth check (2 lights)';
-    show({ kind: 'depth', source: a.canvas, w: a.w, h: a.h, contrast: d.relief, valid: d.valid, n: STILL_N, g, depth: d, coverage: 1 });
-    $('live').hidden = !S.cam;
+    show({ kind: 'depth', source: a.canvas, w: a.w, h: a.h, f: A.f, theta: S.theta, contrast: d.relief, valid: d.valid, depth: d });
+    updateButtons();
   }
 
-  async function onCapture() {
+  async function onMain() {
+    if (!S.step && S.cam && S.mode !== 'live') { S.mode = 'live'; S.scores = []; S.still = S.shotB = null; hint(''); updateButtons(); return; }
     const shot = await acquire();
     $('empty').hidden = true; view.hidden = false;
     if (S.step === 1) {
-      S.shotA = shot; S.step = 2;
-      hint('Shot 2 of 2: same spot, light from the opposite side. Keep the phone still, then tap Capture.');
-      $('capture').textContent = 'Capture shot 2';
-      return;
-    }
-    if (S.step === 2) { $('capture').textContent = S.cam ? 'Capture' : 'Take photo'; finishDepth(S.shotA, shot); return; }
-    useShot(shot);
+      S.shotA = shot; S.step = 2; updateButtons();
+      hint('Now light from the opposite side. Keep the phone still, then tap Shot 2.');
+    } else if (S.step === 2) { finishDepth(S.shotA, shot); }
+    else useShot(shot);
   }
 
-  function startDepth() {
+  function onDepth() {
+    if (S.step) { S.step = 0; hint(''); updateButtons(); return; }
     S.step = 1; S.shotA = null;
-    S.mode = S.cam ? 'live' : 'still';
-    $('capture').textContent = 'Capture shot 1';
-    $('depth').textContent = 'Cancel depth check';
-    hint('Shot 1 of 2: hold the phone still on the spot, light from one side across the lines. Tap Capture.');
+    if (S.cam) S.mode = 'live';
+    updateButtons();
+    hint('Hold still on one spot with light from one side, across the lines. Tap Shot 1.');
   }
-
-  function cancelDepth() {
-    S.step = 0; $('capture').textContent = S.cam ? 'Capture' : 'Take photo';
-    $('depth').textContent = 'Depth check (2 lights)';
-    hint('');
-  }
-
-  function backToLive() { S.mode = 'live'; S.scores = []; $('live').hidden = true; S.render = null; }
 
   // ---- upload to Claude (only in the claude.ai version) ----------------------------------
 
@@ -516,10 +459,7 @@ input[type=range] { width: 100%; min-width: 0; accent-color: var(--accent); marg
     if (!S.assets || !S.render) return;
     $('send').disabled = true; hint('Sending...');
     try {
-      const canvases = [];
-      if (S.mode === 'depth') canvases.push(S.still.canvas, S.shotB.canvas);
-      else if (S.still) canvases.push(S.still.canvas);
-      else canvases.push(work);
+      const canvases = S.mode === 'depth' ? [S.still.canvas, S.shotB.canvas] : [S.still ? S.still.canvas : work];
       canvases.push(view);
       for (const c of canvases) await S.assets.upload(await blobOf(c));
       hint('Sent ' + canvases.length + ' pictures. Tell Claude they are there.');
@@ -529,72 +469,18 @@ input[type=range] { width: 100%; min-width: 0; accent-color: var(--accent); marg
 
   // ---- wiring ---------------------------------------------------------------------------
 
-  function onFile(e) {
+  $('cam').addEventListener('change', (e) => {
     const f = e.target.files && e.target.files[0]; e.target.value = '';
     if (!f) return;
     shotFromFile(f).then((shot) => {
-      if (S.pending) { const p = S.pending; S.pending = null; p(shot); }
-      else { $('capture').textContent = S.cam ? 'Capture' : 'Take photo'; S.step = 0; useShot(shot); }
+      if (S.pending) { const p = S.pending; S.pending = null; p(shot); } else useShot(shot);
     }).catch((err) => hint(err.message, true));
-  }
-  $('cam').addEventListener('change', onFile);
-  $('lib').addEventListener('change', onFile);
-  $('capture').onclick = () => onCapture().catch((err) => hint(err.message, true));
-  $('depth').onclick = () => (S.step ? cancelDepth() : startDepth());
-  $('live').onclick = backToLive;
+  });
+  $('main').onclick = () => onMain().catch((err) => hint(err.message, true));
+  $('depth').onclick = onDepth;
   $('send').onclick = sendToClaude;
-  $('lens').onclick = async () => {
-    S.camIndex = (S.camIndex + 1) % S.cams.length;
-    try { await startCamera(S.cams[S.camIndex].deviceId); } catch (e) { hint('Could not switch lens.', true); }
-  };
-  $('clean').onclick = () => {
-    if (!S.render || S.render.kind !== 'line') { hint('Set as clean works on a normal reading, not on a depth check.', true); return; }
-    $('limit').value = Math.min(10, Math.max(0.2, pct(S.render.score) * 1.6 + 0.2)).toFixed(1);
-    syncLabels(); refresh();
-    hint('Reject line set just above this part. Scan a bad part to check it gets flagged.');
-  };
-  $('angle').onclick = () => {
-    S.angleMode = S.angleMode === 'auto' ? 0 : S.angleMode === 0 ? 90 : 'auto';
-    S.lastFull = -1e9;   // search every angle again on the next live frame
-    $('angle').textContent = 'Line angle: ' + (S.angleMode === 'auto' ? 'auto' : S.angleMode === 0 ? 'sideways' : 'up and down');
-    refresh();
-  };
-  $('filter').onclick = () => {
-    S.filtered = !S.filtered; $('filter').setAttribute('aria-pressed', S.filtered);
-    $('filter').textContent = S.filtered ? 'Red overlay on' : 'Red overlay off';
-    if (S.render) paint(S.render);
-  };
+  $('sens').addEventListener('input', () => { if (S.mode !== 'live' && S.render) show(S.render); });
 
-  function syncLabels() {
-    $('limitV').textContent = (+$('limit').value).toFixed(1) + '%';
-    $('gainV').textContent = $('gain').value;
-    $('sizeV').textContent = $('size').value + '%';
-  }
-  // Re-run the analysis on the stored picture(s). Live mode redraws itself every frame.
-  function refresh() {
-    if (S.mode === 'live' || !S.render) return;
-    if (S.mode === 'depth' && S.still && S.shotB) finishDepth(S.still, S.shotB);
-    else if (S.still) analyseStill(S.still);
-  }
-  ['limit', 'gain'].forEach((id) => $(id).addEventListener('input', () => {
-    syncLabels();
-    if (S.mode !== 'live' && S.render) show(S.render);
-  }));
-  $('size').addEventListener('input', () => { syncLabels(); refresh(); });
-
-  function moveSquare(ev) {
-    const r = view.getBoundingClientRect();
-    S.cx = Math.min(1, Math.max(0, (ev.clientX - r.left) / r.width));
-    S.cy = Math.min(1, Math.max(0, (ev.clientY - r.top) / r.height));
-    refresh();
-  }
-  let dragging = false;
-  view.addEventListener('pointerdown', (ev) => { dragging = true; view.setPointerCapture(ev.pointerId); moveSquare(ev); });
-  view.addEventListener('pointermove', (ev) => { if (dragging) moveSquare(ev); });
-  view.addEventListener('pointerup', () => { dragging = false; });
-  view.addEventListener('pointercancel', () => { dragging = false; });
-
-  syncLabels();
   (async () => {
     try {
       if (window.claude && window.claude.use) {
@@ -603,9 +489,10 @@ input[type=range] { width: 100%; min-width: 0; accent-color: var(--accent); marg
       }
     } catch (e) { /* uploads are optional */ }
   })();
+  updateButtons();
   startCamera().then(() => {
-    $('empty').hidden = true; view.hidden = false; S.mode = 'live';
-    verdict('Looks clean', 'var(--ok)', ''); requestAnimationFrame(tick);
+    $('empty').hidden = true; view.hidden = false; S.mode = 'live'; updateButtons();
+    requestAnimationFrame(tick);
   }).catch((e) => noCamera(e && e.name === 'NotAllowedError'
     ? 'Camera is not allowed here. Use Take photo instead.' : 'No live camera here. Use Take photo instead.'));
 })();
