@@ -3,105 +3,611 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#111111">
+<meta name="theme-color" content="#0f1316">
 <title>Die Line Scanner</title>
 <style>
-  :root { --bg:#111; --fg:#f2f2f2; --muted:#9a9a9a; --ok:#34c759; --bad:#ff453a; --panel:#1c1c1e; }
-  * { box-sizing:border-box; }
-  html { -webkit-tap-highlight-color:transparent; -webkit-text-size-adjust:100%; overscroll-behavior:none; }
-  body { margin:0; height:100dvh; background:var(--bg); color:var(--fg); font:16px/1.4 -apple-system,system-ui,sans-serif;
-         display:flex; flex-direction:column; overflow:hidden; }
-  header { padding:calc(8px + env(safe-area-inset-top)) 16px 8px; display:flex; justify-content:space-between; align-items:baseline; }
-  #verdict { font-weight:600; font-size:20px; }
-  #score { color:var(--muted); font-variant-numeric:tabular-nums; }
-  main { flex:1; min-height:0; display:flex; align-items:center; justify-content:center; background:#000; }
-  canvas { max-width:100%; max-height:100%; }
-  #msg { padding:16px; color:var(--muted); text-align:center; }
-  footer { background:var(--panel); padding:12px 16px calc(12px + env(safe-area-inset-bottom)); display:grid; gap:10px; }
-  .row { display:flex; gap:8px; align-items:center; }
-  .row label { flex:0 0 92px; color:var(--muted); font-size:14px; }
-  input[type=range] { flex:1; min-width:0; }
-  button { flex:1; font:inherit; font-size:16px; color:var(--fg); background:#2c2c2e; border:0; border-radius:10px;
-           padding:12px 8px; touch-action:manipulation; user-select:none; -webkit-user-select:none; -webkit-touch-callout:none;
-           transition:transform 100ms ease-out, background 100ms; }
-  button:active { transform:scale(.97); background:#3a3a3c; }
-  button[aria-pressed=true] { background:#0a84ff; }
+/* Layout: one column. Verdict on top, picture, quick buttons, then settings. Shop-floor tool. */
+:root {
+  --bg: #f3f5f7; --surface: #ffffff; --fg: #15191d; --muted: #5d6874; --line: #d6dce2;
+  --accent: #0b6e7f; --accent-fg: #ffffff; --ok: #1e7f3c; --bad: #c4321f; --warn: #9a5b00;
+  --font: -apple-system, "Segoe UI", system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1316; --surface: #1a2025; --fg: #eef2f5; --muted: #9aa6b1; --line: #2c353d;
+    --accent: #3bb4c8; --accent-fg: #07181c; --ok: #4cc46f; --bad: #ff6b57; --warn: #e0a64a; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1316; --surface: #1a2025; --fg: #eef2f5; --muted: #9aa6b1; --line: #2c353d;
+  --accent: #3bb4c8; --accent-fg: #07181c; --ok: #4cc46f; --bad: #ff6b57; --warn: #e0a64a; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html { -webkit-tap-highlight-color: transparent; -webkit-text-size-adjust: 100%; }
+body { background: var(--bg); color: var(--fg); font: 16px/1.45 var(--font); margin: 0;
+       padding-block: 12px 32px; padding-left: max(16px, env(safe-area-inset-left, 0px));
+       padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.wrap { max-width: 640px; margin: 0 auto; display: grid; gap: 12px; }
+.top { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+#verdict { font-size: 20px; font-weight: 700; text-wrap: balance; }
+#score { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 14px; }
+.stage { background: #000; border-radius: 12px; overflow: hidden; display: grid; place-items: center; min-height: 140px; }
+.stage canvas { width: 100%; height: auto; max-height: 62dvh; object-fit: contain; display: block; touch-action: none; }
+.stage .empty { padding: 24px; color: #aab4bd; text-align: center; }
+#hint { color: var(--muted); font-size: 14px; min-height: 1.4em; margin: 0; }
+#hint.warn { color: var(--warn); }
+.btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.btn, button { display: flex; align-items: center; justify-content: center; min-height: 48px; border-radius: 10px; padding: 8px 10px;
+       font: inherit; font-weight: 600; text-align: center; cursor: pointer; touch-action: manipulation;
+       user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+       border: 1px solid var(--line); background: var(--surface); color: var(--fg);
+       transition: transform 100ms ease-out; }
+.btn.primary, button.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+button[aria-pressed="true"] { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+.btn:active, button:active { transform: scale(.97); }
+button:disabled { opacity: .5; }
+.btn input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.btn:focus-within, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px; display: grid; gap: 14px; }
+.slider label { display: flex; justify-content: space-between; font-weight: 600; font-size: 15px; }
+.slider output { font-variant-numeric: tabular-nums; color: var(--muted); font-weight: 400; }
+.slider small { display: block; color: var(--muted); font-size: 13px; margin-top: 2px; }
+input[type=range] { width: 100%; min-width: 0; accent-color: var(--accent); margin: 6px 0 0; }
+[hidden] { display: none !important; }
+@media (prefers-reduced-motion: reduce) { .btn, button { transition: none; } }
 </style>
 </head>
 <body>
-<header><span id="verdict">Starting...</span><span id="score"></span></header>
-<main><canvas id="view"></canvas><div id="msg" hidden></div></main>
-<footer>
-  <div class="row">
-    <button id="mode" aria-pressed="true">Filtered view</button>
-    <button id="orient">Lines: horizontal</button>
-    <button id="freeze" aria-pressed="false">Freeze</button>
+<div class="wrap">
+  <div class="top"><span id="verdict">Starting...</span><span id="score"></span></div>
+
+  <div class="stage"><canvas id="view" hidden></canvas><div class="empty" id="empty">Starting the camera...</div></div>
+  <p id="hint"></p>
+
+  <div class="btns">
+    <button id="capture" class="primary">Capture</button>
+    <button id="depth">Depth check (2 lights)</button>
+    <label class="btn" for="lib">Choose photo<input id="lib" type="file" accept="image/*"></label>
+    <button id="lens" hidden></button>
+    <button id="live" hidden>Back to live</button>
+    <button id="send" hidden>Send to Claude</button>
+    <button id="clean">Set as clean</button>
+    <button id="angle">Line angle: auto</button>
+    <button id="filter" aria-pressed="true">Red overlay on</button>
   </div>
-  <div class="row"><label for="gain">Sensitivity</label><input id="gain" type="range" min="1" max="30" value="10"></div>
-  <div class="row"><label for="limit">Reject above</label><input id="limit" type="range" min="1" max="30" step="0.5" value="6"></div>
-</footer>
-<script src="filter.js"></script>
+  <input id="cam" type="file" accept="image/*" capture="environment" hidden>
+
+  <div class="panel">
+    <div class="slider">
+      <label for="limit">Reject above <output id="limitV"></output></label>
+      <input id="limit" type="range" min="0.2" max="10" step="0.1" value="3">
+      <small>Pass or fail line. If the line score is higher than this, the part is flagged. Use Set as clean on a good part to set it.</small>
+    </div>
+    <div class="slider">
+      <label for="gain">Overlay strength <output id="gainV"></output></label>
+      <input id="gain" type="range" min="1" max="30" value="10">
+      <small>How strongly lines are painted red. It only changes the picture, not the score.</small>
+    </div>
+    <div class="slider">
+      <label for="size">Scan square size <output id="sizeV"></output></label>
+      <input id="size" type="range" min="25" max="90" value="60">
+      <small>Tap the picture to move the square onto a flat face of the profile. Keep ribs, corners and glare outside it.</small>
+    </div>
+  </div>
+</div>
 <script>
-(() => {
-  const $ = (id) => document.getElementById(id);
-  const view = $('view'), ctx = view.getContext('2d', { willReadFrequently: true });
-  const work = document.createElement('canvas'), wctx = work.getContext('2d', { willReadFrequently: true });
-  const video = document.createElement('video');
-  video.muted = true; video.playsInline = true; video.setAttribute('playsinline', '');
-  const W = 480;
-  let filtered = true, vertical = false, frozen = false, last = 0;
+// Die line analysis. Pure functions, no DOM, so they can be tested in Node.
+//
+// A "field" is a square patch of brightness values, rotated so the extrusion
+// lines run left to right. Everything below assumes that.
+(function (root) {
+  'use strict';
 
-  function showMessage(text) { $('msg').textContent = text; $('msg').hidden = false; view.hidden = true; $('verdict').textContent = 'No camera'; }
+  const BINS = 512;
+  const MAX_CONTRAST = 0.5;   // contrast above this counts as 0.5
+  const TOP_FRACTION = 0.10;  // the score is the mean of the strongest 10% of pixels
+  const EDGE_LIMIT = 0.07;    // a brightness step bigger than this across a few pixels is an edge, not a line
+  const DARK = 10, BRIGHT = 245;
 
-  async function start() {
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      showMessage('The camera needs a secure page. Open the https:// address, and accept the certificate warning once.');
-      return;
+  function toGray(rgba, count) {
+    const g = new Uint8ClampedArray(count);
+    for (let i = 0, p = 0; i < count; i++, p += 4) g[i] = (rgba[p] * 77 + rgba[p + 1] * 150 + rgba[p + 2] * 29) >> 8;
+    return g;
+  }
+
+  // Sample an n*n patch of side `size` centred on (cx, cy), turned by theta radians.
+  function sampleRotated(gray, w, h, cx, cy, size, theta, n) {
+    const out = new Float32Array(n * n);
+    const c = Math.cos(theta), s = Math.sin(theta), step = size / n, half = size / 2;
+    let k = 0;
+    for (let j = 0; j < n; j++) {
+      const v = (j + 0.5) * step - half;
+      for (let i = 0; i < n; i++, k++) {
+        const u = (i + 0.5) * step - half;
+        let x = cx + u * c - v * s - 0.5, y = cy + u * s + v * c - 0.5;
+        if (x < 0) x = 0; else if (x > w - 1.001) x = w - 1.001;
+        if (y < 0) y = 0; else if (y > h - 1.001) y = h - 1.001;
+        const x0 = x | 0, y0 = y | 0, fx = x - x0, fy = y - y0, p = y0 * w + x0;
+        out[k] = (gray[p] * (1 - fx) + gray[p + 1] * fx) * (1 - fy) + (gray[p + w] * (1 - fx) + gray[p + w + 1] * fx) * fy;
+      }
     }
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: false,
-        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } } });
-      video.srcObject = stream;
-      await video.play();
-      requestAnimationFrame(tick);
-    } catch (e) {
-      showMessage(e.name === 'NotAllowedError'
-        ? 'Camera permission was denied. In Settings > Safari > Camera, allow it, then reload.'
-        : 'Could not start the camera: ' + e.message);
+    return out;
+  }
+
+  function blurRows(src, dst, n, len) {
+    const half = len >> 1;
+    for (let j = 0; j < n; j++) {
+      const base = j * n;
+      let sum = 0, cnt = 0;
+      for (let i = 0; i < Math.min(half, n); i++) { sum += src[base + i]; cnt++; }
+      for (let i = 0; i < n; i++) {
+        const add = i + half, rem = i - half - 1;
+        if (add < n) { sum += src[base + add]; cnt++; }
+        if (rem >= 0) { sum -= src[base + rem]; cnt--; }
+        dst[base + i] = sum / cnt;
+      }
     }
   }
+
+  // Mean of the strongest `frac` of |values| over the valid pixels.
+  function topMean(values, valid, frac) {
+    const cnt = new Uint32Array(BINS), sum = new Float64Array(BINS);
+    let total = 0;
+    for (let i = 0; i < values.length; i++) {
+      if (!valid[i]) continue;
+      let v = Math.abs(values[i]);
+      if (v > MAX_CONTRAST - 1e-6) v = MAX_CONTRAST - 1e-6;
+      const b = (v / MAX_CONTRAST * BINS) | 0;
+      cnt[b]++; sum[b] += v; total++;
+    }
+    if (!total) return 0;
+    const need = Math.max(1, Math.ceil(total * frac));
+    let acc = 0, taken = 0;
+    for (let b = BINS - 1; b >= 0 && taken < need; b--) {
+      if (!cnt[b]) continue;
+      const take = Math.min(cnt[b], need - taken);
+      acc += sum[b] * take / cnt[b];
+      taken += take;
+    }
+    return acc / taken;
+  }
+
+  // Returns { score, contrast, valid, coverage }.
+  //   contrast: signed line signal per pixel, as a fraction of local brightness.
+  //   valid:    1 where the pixel counts. Edges, glare, shadow and borders are 0.
+  //   score:    strength of the strongest lines, as a fraction (0.02 = 2%).
+  function analyseField(field, n, opts) {
+    const o = Object.assign({
+      along: Math.max(9, Math.round(n * 0.06)),   // how far to average along a line (keeps long streaks, drops noise)
+      across: Math.max(2, Math.round(n * 0.012)), // how far to compare across lines
+    }, opts);
+    const k = o.across, k2 = Math.max(4, k * 2), L = o.along;
+
+    const smooth = new Float32Array(n * n);
+    blurRows(field, smooth, n, L);
+
+    const contrast = new Float32Array(n * n);
+    const bad = new Uint8Array(n * n);
+    const P = new Float64Array(n + 1);
+    const edge = new Uint8Array(n);
+
+    for (let i = 0; i < n; i++) {
+      P[0] = 0;
+      for (let j = 0; j < n; j++) P[j + 1] = P[j] + smooth[j * n + i];
+      edge.fill(0);
+      for (let j = 0; j < n; j++) {
+        const a = Math.max(0, j - k), b = Math.min(n, j + k + 1);
+        const local = (P[b] - P[a]) / (b - a);
+        contrast[j * n + i] = (smooth[j * n + i] - local) / (local + 8);
+        if (local < DARK || local > BRIGHT) bad[j * n + i] = 1;
+
+        // Edge test: compare the mean just below with the mean just above.
+        const b0 = j + 1, b1 = Math.min(n, j + k2 + 1), a0 = Math.max(0, j - k2), a1 = j;
+        if (b1 > b0 && a1 > a0) {
+          const below = (P[b1] - P[b0]) / (b1 - b0), above = (P[a1] - P[a0]) / (a1 - a0);
+          if (Math.abs(below - above) / (local + 8) > EDGE_LIMIT) edge[j] = 1;
+        }
+      }
+      for (let j = 0; j < n; j++) {
+        if (!edge[j]) continue;
+        for (let t = Math.max(0, j - k); t <= Math.min(n - 1, j + k); t++) bad[t * n + i] = 1;
+      }
+    }
+
+    // Borders, where the averaging windows are cut short.
+    const mx = L >> 1, my = k2;
+    let validCount = 0;
+    const valid = new Uint8Array(n * n);
+    for (let j = 0; j < n; j++) {
+      for (let i = 0; i < n; i++) {
+        const idx = j * n + i;
+        if (i < mx || i >= n - mx || j < my || j >= n - my || bad[idx]) continue;
+        valid[idx] = 1; validCount++;
+      }
+    }
+    const coverage = validCount / (n * n);
+    return { score: validCount < n * n * 0.05 ? 0 : topMean(contrast, valid, TOP_FRACTION), contrast, valid, coverage };
+  }
+
+  // Find the angle (0 to 180 degrees) at which the lines run, by trying angles and keeping the strongest.
+  // With opts.around (degrees) it only checks a few angles near that one, which is much cheaper.
+  function findAngle(gray, w, h, cx, cy, size, opts) {
+    const n = 192;
+    const wrap = (d) => ((d % 180) + 180) % 180;
+    let best = { deg: 0, theta: 0, score: -1 };
+    const test = (deg) => {
+      const theta = deg * Math.PI / 180;
+      const r = analyseField(sampleRotated(gray, w, h, cx, cy, size, theta, n), n);
+      if (r.score > best.score) best = { deg, theta, score: r.score };
+    };
+    if (opts && typeof opts.around === 'number') {
+      for (const dd of [0, -4, 4, -8, 8]) test(wrap(opts.around + dd));
+      return best;
+    }
+    for (let d = 0; d < 180; d += 15) test(d);
+    const centre = best.deg;
+    for (const dd of [-10, -5, 5, 10]) test(wrap(centre + dd));
+    return best;
+  }
+
+  // Two photos of the same spot with the light from opposite sides.
+  // A groove flips its shading when the light flips. A stain or print does not.
+  function depth(a, b) {
+    const n = a.contrast.length;
+    const relief = new Float32Array(n), stain = new Float32Array(n), valid = new Uint8Array(n);
+    for (let i = 0; i < n; i++) {
+      valid[i] = a.valid[i] & b.valid[i];
+      relief[i] = (a.contrast[i] - b.contrast[i]) / 2;
+      stain[i] = (a.contrast[i] + b.contrast[i]) / 2;
+    }
+    const reliefScore = topMean(relief, valid, TOP_FRACTION);
+    const stainScore = topMean(stain, valid, TOP_FRACTION);
+    return { relief, stain, valid, reliefScore, stainScore,
+      grooveShare: reliefScore / (reliefScore + stainScore + 1e-9) };
+  }
+
+  const api = { toGray, sampleRotated, analyseField, findAngle, depth };
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+  else root.Scan = api;
+})(typeof self !== 'undefined' ? self : this);
+
+(() => {
+  'use strict';
+  const $ = (id) => document.getElementById(id);
+  const view = $('view'), vctx = view.getContext('2d');
+  const LIVE_W = 640, LIVE_N = 256, STILL_MAX_W = 1920, STILL_N = 640;
+  const work = document.createElement('canvas'), wctx = work.getContext('2d', { willReadFrequently: true });
+  const ovl = document.createElement('canvas'), octx = ovl.getContext('2d');
+  const video = document.createElement('video');
+  video.muted = true; video.playsInline = true; video.setAttribute('playsinline', '');
+
+  const S = {
+    cam: false, mode: 'live',            // live | still | depth
+    angleMode: 'auto', ang: 0, angDeg: 0,
+    cx: 0.5, cy: 0.5,                    // scan square centre, as a fraction of the picture
+    filtered: true, still: null, shotA: null, shotB: null, step: 0,
+    scores: [], last: 0, lastAngle: -1e9, lastFull: -1e9, render: null, pending: null, assets: null,
+    cams: [], camIndex: 0, stream: null,
+  };
+
+  const pct = (f) => f * 100;
+  const limitPct = () => +$('limit').value;
+  const hint = (text, warn) => { $('hint').textContent = text || ''; $('hint').classList.toggle('warn', !!warn); };
+
+  // ---- pictures -------------------------------------------------------------------------
+
+  function makeShot(source, sw, sh, maxW) {
+    const scale = Math.min(1, maxW / sw), w = Math.round(sw * scale), h = Math.round(sh * scale);
+    const canvas = document.createElement('canvas');
+    canvas.width = w; canvas.height = h;
+    const c = canvas.getContext('2d', { willReadFrequently: true });
+    c.drawImage(source, 0, 0, w, h);
+    return { canvas, w, h, gray: Scan.toGray(c.getImageData(0, 0, w, h).data, w * h) };
+  }
+
+  async function shotFromFile(file) {
+    let bmp;
+    try { bmp = await createImageBitmap(file, { imageOrientation: 'from-image' }); }
+    catch (e) {
+      bmp = await new Promise((ok, fail) => {
+        const im = new Image(), u = URL.createObjectURL(file);
+        im.onload = () => { URL.revokeObjectURL(u); ok(im); };
+        im.onerror = () => fail(new Error('That photo could not be read.'));
+        im.src = u;
+      });
+    }
+    return makeShot(bmp, bmp.width, bmp.height, STILL_MAX_W);
+  }
+
+  const shotFromVideo = () => makeShot(video, video.videoWidth, video.videoHeight, STILL_MAX_W);
+
+  // Get a new picture: a frame from the camera, or a photo from the phone's camera app.
+  function acquire() {
+    if (S.cam) return Promise.resolve(shotFromVideo());
+    return new Promise((resolve) => { S.pending = resolve; $('cam').click(); });
+  }
+
+  // ---- analysis -------------------------------------------------------------------------
+
+  function geometry(w, h) {
+    const size = (+$('size').value / 100) * Math.min(w, h);
+    const cx = Math.min(Math.max(S.cx * w, size / 2), w - size / 2);
+    const cy = Math.min(Math.max(S.cy * h, size / 2), h - size / 2);
+    return { size, cx, cy };
+  }
+
+  // how: 'full' searches every angle, 'refine' checks a few near the last one, 'keep' reuses it.
+  function chooseAngle(gray, w, h, g, how) {
+    if (S.angleMode !== 'auto') { S.angDeg = S.angleMode; S.ang = S.angDeg * Math.PI / 180; return; }
+    if (how === 'keep') return;
+    const a = Scan.findAngle(gray, w, h, g.cx, g.cy, g.size, how === 'refine' ? { around: S.angDeg } : undefined);
+    S.ang = a.theta; S.angDeg = a.deg;
+  }
+
+  function field(shot, g, n) { return Scan.sampleRotated(shot.gray, shot.w, shot.h, g.cx, g.cy, g.size, S.ang, n); }
+
+  // ---- drawing --------------------------------------------------------------------------
+
+  function paint(R) {
+    const { source, w, h, contrast, valid, n, g } = R;
+    if (view.width !== w || view.height !== h) { view.width = w; view.height = h; }
+    vctx.drawImage(source, 0, 0, w, h);
+    if (ovl.width !== n) { ovl.width = ovl.height = n; }
+    if (S.filtered) {
+      const img = octx.createImageData(n, n), d = img.data, gain = +$('gain').value * 2.5;
+      for (let i = 0, p = 0; i < n * n; i++, p += 4) {
+        if (!valid[i]) { d[p] = 70; d[p + 1] = 120; d[p + 2] = 255; d[p + 3] = 55; continue; }
+        const s = Math.min(1, Math.abs(contrast[i]) * gain);
+        d[p] = 255; d[p + 1] = 40; d[p + 2] = 30; d[p + 3] = s * 235;
+      }
+      octx.putImageData(img, 0, 0);
+    }
+    vctx.save();
+    vctx.translate(g.cx, g.cy); vctx.rotate(S.ang);
+    if (S.filtered) vctx.drawImage(ovl, -g.size / 2, -g.size / 2, g.size, g.size);
+    vctx.lineWidth = Math.max(2, w / 320); vctx.strokeStyle = 'rgba(255,255,255,.85)';
+    vctx.strokeRect(-g.size / 2, -g.size / 2, g.size, g.size);
+    vctx.restore();
+  }
+
+  function verdict(text, colour, scoreText) {
+    $('verdict').textContent = text; $('verdict').style.color = colour; $('score').textContent = scoreText || '';
+  }
+
+  function show(R) {
+    S.render = R;
+    paint(R);
+    const lim = limitPct();
+    if (R.kind === 'depth') {
+      const rel = pct(R.depth.reliefScore), stn = pct(R.depth.stainScore);
+      const text = rel > lim ? 'Cut into the surface (groove)' : stn > lim ? 'Surface marks only, not cut in' : 'Looks clean';
+      verdict(text, rel > lim ? 'var(--bad)' : stn > lim ? 'var(--warn)' : 'var(--ok)',
+        'Groove ' + rel.toFixed(1) + '%   Surface marks ' + stn.toFixed(1) + '%');
+      hint('Red shows what flipped with the light, which means it has depth. Marks that did not flip are not counted.');
+    } else {
+      const sc = pct(R.score), bad = sc > lim;
+      verdict(bad ? 'Die lines likely' : 'Looks clean', bad ? 'var(--bad)' : 'var(--ok)',
+        'Line score ' + sc.toFixed(1) + '% (reject above ' + lim.toFixed(1) + '%)  angle ' + Math.round(S.angDeg) + '°');
+      if (S.step) { /* keep the depth-check instructions on screen */ }
+      else if (R.coverage < 0.35) hint('Most of the square is edge, glare or shadow (blue). Move it onto a flat face.', true);
+      else if (S.mode === 'live') hint('Aim, then tap Capture for a sharper reading. Tap the picture to move the square.');
+      else hint('Tap the picture to move the square. Use Depth check to tell real grooves from marks.');
+    }
+    $('send').disabled = false;
+  }
+
+  // ---- live camera ----------------------------------------------------------------------
 
   function tick(t) {
     requestAnimationFrame(tick);
-    if (frozen || t - last < 66 || !video.videoWidth) return;   // about 15 frames a second
-    last = t;
-    const h = Math.round(W * video.videoHeight / video.videoWidth);
-    if (work.width !== W || work.height !== h) { work.width = view.width = W; work.height = view.height = h; }
-    wctx.drawImage(video, 0, 0, W, h);
-    const img = wctx.getImageData(0, 0, W, h), px = img.data;
-    const gray = new Uint8ClampedArray(W * h);
-    for (let i = 0, p = 0; i < gray.length; i++, p += 4) gray[i] = (px[p] * 77 + px[p + 1] * 150 + px[p + 2] * 29) >> 8;
-
-    const { score, signal } = DieLine.analyse(gray, W, h, { vertical });
-    if (filtered) {
-      const gain = +$('gain').value;
-      for (let i = 0, p = 0; i < gray.length; i++, p += 4) {
-        const s = Math.min(1, Math.abs(signal[i]) * gain / 40);
-        px[p] = gray[i] * 0.5 + 255 * s; px[p + 1] = gray[i] * 0.5 * (1 - s); px[p + 2] = gray[i] * 0.5 * (1 - s);
-      }
-    }
-    ctx.putImageData(img, 0, 0);
-
-    const bad = score > +$('limit').value;
-    $('verdict').textContent = bad ? 'Die lines likely' : 'Looks clean';
-    $('verdict').style.color = bad ? 'var(--bad)' : 'var(--ok)';
-    $('score').textContent = 'score ' + score.toFixed(1);
+    if (S.mode !== 'live' || !video.videoWidth || t - S.last < 66) return;
+    S.last = t;
+    const h = Math.round(LIVE_W * video.videoHeight / video.videoWidth);
+    if (work.width !== LIVE_W || work.height !== h) { work.width = LIVE_W; work.height = h; }
+    wctx.drawImage(video, 0, 0, LIVE_W, h);
+    const gray = Scan.toGray(wctx.getImageData(0, 0, LIVE_W, h).data, LIVE_W * h);
+    const shot = { gray, w: LIVE_W, h, canvas: work };
+    const g = geometry(LIVE_W, h);
+    let how = 'keep';
+    if (t - S.lastFull > 6000) { how = 'full'; S.lastFull = S.lastAngle = t; }
+    else if (t - S.lastAngle > 700) { how = 'refine'; S.lastAngle = t; }
+    chooseAngle(gray, LIVE_W, h, g, how);
+    const r = Scan.analyseField(field(shot, g, LIVE_N), LIVE_N);
+    S.scores.push(r.score); if (S.scores.length > 5) S.scores.shift();
+    const med = [...S.scores].sort((a, b) => a - b)[S.scores.length >> 1];
+    show({ kind: 'line', source: work, w: LIVE_W, h, contrast: r.contrast, valid: r.valid, n: LIVE_N, g, score: med, coverage: r.coverage });
   }
 
-  $('mode').onclick = (e) => { filtered = !filtered; e.currentTarget.setAttribute('aria-pressed', filtered); e.currentTarget.textContent = filtered ? 'Filtered view' : 'Raw view'; };
-  $('orient').onclick = (e) => { vertical = !vertical; e.currentTarget.textContent = vertical ? 'Lines: vertical' : 'Lines: horizontal'; };
-  $('freeze').onclick = (e) => { frozen = !frozen; e.currentTarget.setAttribute('aria-pressed', frozen); e.currentTarget.textContent = frozen ? 'Resume' : 'Freeze'; };
-  start();
+  async function startCamera(deviceId) {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error('no camera api');
+    if (S.stream) S.stream.getTracks().forEach((t) => t.stop());
+    const video_ = { width: { ideal: 1920 }, height: { ideal: 1080 } };
+    if (deviceId) video_.deviceId = { exact: deviceId }; else video_.facingMode = { ideal: 'environment' };
+    S.stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: video_ });
+    video.srcObject = S.stream;
+    await video.play();
+    S.cam = true;
+    try {
+      const all = await navigator.mediaDevices.enumerateDevices();
+      S.cams = all.filter((d) => d.kind === 'videoinput' && !/front|user/i.test(d.label));
+      const active = S.stream.getVideoTracks()[0].getSettings().deviceId;
+      S.camIndex = Math.max(0, S.cams.findIndex((d) => d.deviceId === active));
+    } catch (e) { S.cams = []; }
+    updateCameraButton();
+  }
+
+  function updateCameraButton() {
+    const b = $('lens');
+    b.hidden = !(S.cam && S.cams.length > 1);
+    if (!b.hidden) b.textContent = 'Lens: ' + (S.cams[S.camIndex].label.replace(/^back\s*/i, '').replace(/camera/i, '').trim() || 'main');
+  }
+
+  function noCamera(reason) {
+    S.cam = false; S.mode = 'still';
+    $('empty').textContent = reason; $('empty').hidden = false;
+    $('capture').textContent = 'Take photo';
+    verdict('Take a photo to start', 'var(--fg)', '');
+    hint('Live view is not available here. Take photos instead. They are analysed at full quality.');
+  }
+
+  // ---- actions --------------------------------------------------------------------------
+
+  function analyseStill(shot) {
+    const g = geometry(shot.w, shot.h);
+    chooseAngle(shot.gray, shot.w, shot.h, g, 'full');
+    const r = Scan.analyseField(field(shot, g, STILL_N), STILL_N);
+    S.mode = 'still';
+    show({ kind: 'line', source: shot.canvas, w: shot.w, h: shot.h, contrast: r.contrast, valid: r.valid, n: STILL_N, g, score: r.score, coverage: r.coverage });
+  }
+
+  function useShot(shot) {
+    $('empty').hidden = true; view.hidden = false;
+    S.still = shot;
+    analyseStill(shot);
+    $('live').hidden = !S.cam;
+  }
+
+  function finishDepth(a, b) {
+    if (a.w !== b.w || a.h !== b.h) { hint('The two photos are different sizes. Take both again.', true); S.step = 0; return; }
+    const g = geometry(a.w, a.h);
+    chooseAngle(a.gray, a.w, a.h, g, 'full');
+    const ra = Scan.analyseField(field(a, g, STILL_N), STILL_N), rb = Scan.analyseField(field(b, g, STILL_N), STILL_N);
+    const d = Scan.depth(ra, rb);
+    S.mode = 'depth'; S.step = 0; S.still = a; S.shotB = b;
+    $('depth').textContent = 'Depth check (2 lights)';
+    show({ kind: 'depth', source: a.canvas, w: a.w, h: a.h, contrast: d.relief, valid: d.valid, n: STILL_N, g, depth: d, coverage: 1 });
+    $('live').hidden = !S.cam;
+  }
+
+  async function onCapture() {
+    const shot = await acquire();
+    $('empty').hidden = true; view.hidden = false;
+    if (S.step === 1) {
+      S.shotA = shot; S.step = 2;
+      hint('Shot 2 of 2: same spot, light from the opposite side. Keep the phone still, then tap Capture.');
+      $('capture').textContent = 'Capture shot 2';
+      return;
+    }
+    if (S.step === 2) { $('capture').textContent = S.cam ? 'Capture' : 'Take photo'; finishDepth(S.shotA, shot); return; }
+    useShot(shot);
+  }
+
+  function startDepth() {
+    S.step = 1; S.shotA = null;
+    S.mode = S.cam ? 'live' : 'still';
+    $('capture').textContent = 'Capture shot 1';
+    $('depth').textContent = 'Cancel depth check';
+    hint('Shot 1 of 2: hold the phone still on the spot, light from one side across the lines. Tap Capture.');
+  }
+
+  function cancelDepth() {
+    S.step = 0; $('capture').textContent = S.cam ? 'Capture' : 'Take photo';
+    $('depth').textContent = 'Depth check (2 lights)';
+    hint('');
+  }
+
+  function backToLive() { S.mode = 'live'; S.scores = []; $('live').hidden = true; S.render = null; }
+
+  // ---- upload to Claude (only in the claude.ai version) ----------------------------------
+
+  const blobOf = (canvas) => new Promise((ok) => canvas.toBlob(ok, 'image/jpeg', 0.92));
+
+  async function sendToClaude() {
+    if (!S.assets || !S.render) return;
+    $('send').disabled = true; hint('Sending...');
+    try {
+      const canvases = [];
+      if (S.mode === 'depth') canvases.push(S.still.canvas, S.shotB.canvas);
+      else if (S.still) canvases.push(S.still.canvas);
+      else canvases.push(work);
+      canvases.push(view);
+      for (const c of canvases) await S.assets.upload(await blobOf(c));
+      hint('Sent ' + canvases.length + ' pictures. Tell Claude they are there.');
+    } catch (e) { hint('Could not send: ' + (e && e.message ? e.message : 'try again'), true); }
+    $('send').disabled = false;
+  }
+
+  // ---- wiring ---------------------------------------------------------------------------
+
+  function onFile(e) {
+    const f = e.target.files && e.target.files[0]; e.target.value = '';
+    if (!f) return;
+    shotFromFile(f).then((shot) => {
+      if (S.pending) { const p = S.pending; S.pending = null; p(shot); }
+      else { $('capture').textContent = S.cam ? 'Capture' : 'Take photo'; S.step = 0; useShot(shot); }
+    }).catch((err) => hint(err.message, true));
+  }
+  $('cam').addEventListener('change', onFile);
+  $('lib').addEventListener('change', onFile);
+  $('capture').onclick = () => onCapture().catch((err) => hint(err.message, true));
+  $('depth').onclick = () => (S.step ? cancelDepth() : startDepth());
+  $('live').onclick = backToLive;
+  $('send').onclick = sendToClaude;
+  $('lens').onclick = async () => {
+    S.camIndex = (S.camIndex + 1) % S.cams.length;
+    try { await startCamera(S.cams[S.camIndex].deviceId); } catch (e) { hint('Could not switch lens.', true); }
+  };
+  $('clean').onclick = () => {
+    if (!S.render || S.render.kind !== 'line') { hint('Set as clean works on a normal reading, not on a depth check.', true); return; }
+    $('limit').value = Math.min(10, Math.max(0.2, pct(S.render.score) * 1.6 + 0.2)).toFixed(1);
+    syncLabels(); refresh();
+    hint('Reject line set just above this part. Scan a bad part to check it gets flagged.');
+  };
+  $('angle').onclick = () => {
+    S.angleMode = S.angleMode === 'auto' ? 0 : S.angleMode === 0 ? 90 : 'auto';
+    S.lastFull = -1e9;   // search every angle again on the next live frame
+    $('angle').textContent = 'Line angle: ' + (S.angleMode === 'auto' ? 'auto' : S.angleMode === 0 ? 'sideways' : 'up and down');
+    refresh();
+  };
+  $('filter').onclick = () => {
+    S.filtered = !S.filtered; $('filter').setAttribute('aria-pressed', S.filtered);
+    $('filter').textContent = S.filtered ? 'Red overlay on' : 'Red overlay off';
+    if (S.render) paint(S.render);
+  };
+
+  function syncLabels() {
+    $('limitV').textContent = (+$('limit').value).toFixed(1) + '%';
+    $('gainV').textContent = $('gain').value;
+    $('sizeV').textContent = $('size').value + '%';
+  }
+  // Re-run the analysis on the stored picture(s). Live mode redraws itself every frame.
+  function refresh() {
+    if (S.mode === 'live' || !S.render) return;
+    if (S.mode === 'depth' && S.still && S.shotB) finishDepth(S.still, S.shotB);
+    else if (S.still) analyseStill(S.still);
+  }
+  ['limit', 'gain'].forEach((id) => $(id).addEventListener('input', () => {
+    syncLabels();
+    if (S.mode !== 'live' && S.render) show(S.render);
+  }));
+  $('size').addEventListener('input', () => { syncLabels(); refresh(); });
+
+  function moveSquare(ev) {
+    const r = view.getBoundingClientRect();
+    S.cx = Math.min(1, Math.max(0, (ev.clientX - r.left) / r.width));
+    S.cy = Math.min(1, Math.max(0, (ev.clientY - r.top) / r.height));
+    refresh();
+  }
+  let dragging = false;
+  view.addEventListener('pointerdown', (ev) => { dragging = true; view.setPointerCapture(ev.pointerId); moveSquare(ev); });
+  view.addEventListener('pointermove', (ev) => { if (dragging) moveSquare(ev); });
+  view.addEventListener('pointerup', () => { dragging = false; });
+  view.addEventListener('pointercancel', () => { dragging = false; });
+
+  syncLabels();
+  (async () => {
+    try {
+      if (window.claude && window.claude.use) {
+        const assets = await window.claude.use('assets');
+        if (assets) { S.assets = assets; $('send').hidden = false; $('send').disabled = true; }
+      }
+    } catch (e) { /* uploads are optional */ }
+  })();
+  startCamera().then(() => {
+    $('empty').hidden = true; view.hidden = false; S.mode = 'live';
+    verdict('Looks clean', 'var(--ok)', ''); requestAnimationFrame(tick);
+  }).catch((e) => noCamera(e && e.name === 'NotAllowedError'
+    ? 'Camera is not allowed here. Use Take photo instead.' : 'No live camera here. Use Take photo instead.'));
 })();
 </script>
 </body>
