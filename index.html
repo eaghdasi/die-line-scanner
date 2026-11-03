@@ -26,6 +26,8 @@ body { background: var(--bg); color: var(--fg); font: 16px/1.4 var(--font); marg
        background: linear-gradient(rgba(0,0,0,.65), rgba(0,0,0,0)); pointer-events: none; }
 #verdict { font-size: 22px; font-weight: 700; text-wrap: balance; text-shadow: 0 1px 4px rgba(0,0,0,.6); }
 #score { color: #d5dce2; font-size: 14px; font-variant-numeric: tabular-nums; text-shadow: 0 1px 4px rgba(0,0,0,.6); white-space: nowrap; }
+.chip { position: absolute; right: max(16px, env(safe-area-inset-right, 0px)); top: calc(46px + env(safe-area-inset-top, 0px));
+        flex: none; min-height: 36px; padding: 4px 12px; font-size: 13px; font-weight: 600; background: rgba(0,0,0,.55); border-color: rgba(255,255,255,.25); }
 #hint { position: absolute; left: max(16px, env(safe-area-inset-left, 0px)); right: max(16px, env(safe-area-inset-right, 0px)); bottom: 10px; margin: 0;
         padding: 8px 12px; border-radius: 10px; background: rgba(0,0,0,.7); font-size: 14px; }
 #hint.warn { color: var(--warn); }
@@ -50,6 +52,7 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   <canvas id="view" hidden></canvas>
   <div class="empty" id="empty">Starting the camera...</div>
   <div class="top"><span id="verdict"></span><span id="score"></span></div>
+  <button id="angle" class="chip">Lines: auto</button>
   <p id="hint" hidden></p>
 </div>
 <div class="bar">
@@ -115,13 +118,27 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   // The direction the lines run, from the picture's overall grain, as radians in [0, PI).
   // coherence is 0 for random texture and near 1 for clear parallel lines.
   function dominantAngle(gray, w, h) {
-    const CAP = 120, FLOOR = 8;   // Sobel gradients are 4 times a plain difference
+    const CAP = 120, FLOOR = 10;   // Sobel gradients are 4 times a plain difference
+    // Remove slow brightness change first (light falloff, shading) so only fine detail is left.
+    // Otherwise a lighting gradient across the part outvotes the lines and gives the wrong direction.
+    const tmp = new Float32Array(w * h), fine = new Float32Array(w * h);
+    blurRows(gray, tmp, w, h, 9);
+    for (let i = 0; i < w; i++) {   // vertical box blur of tmp into fine, then subtract
+      let sum = 0, cnt = 0;
+      for (let j = 0; j < Math.min(4, h); j++) { sum += tmp[j * w + i]; cnt++; }
+      for (let j = 0; j < h; j++) {
+        const add = j + 4, rem = j - 5;
+        if (add < h) { sum += tmp[add * w + i]; cnt++; }
+        if (rem >= 0) { sum -= tmp[rem * w + i]; cnt--; }
+        fine[j * w + i] = gray[j * w + i] - sum / cnt;
+      }
+    }
     let sxx = 0, sxy = 0, total = 0;
     for (let y = 1; y < h - 1; y++) {
       for (let x = 1; x < w - 1; x++) {
         const i = y * w + x;
-        let gx = gray[i - w + 1] + 2 * gray[i + 1] + gray[i + w + 1] - gray[i - w - 1] - 2 * gray[i - 1] - gray[i + w - 1];
-        let gy = gray[i + w - 1] + 2 * gray[i + w] + gray[i + w + 1] - gray[i - w - 1] - 2 * gray[i - w] - gray[i - w + 1];
+        let gx = fine[i - w + 1] + 2 * fine[i + 1] + fine[i + w + 1] - fine[i - w - 1] - 2 * fine[i - 1] - fine[i + w - 1];
+        let gy = fine[i + w - 1] + 2 * fine[i + w] + fine[i + w + 1] - fine[i - w - 1] - 2 * fine[i - w] - fine[i - w + 1];
         const mag = Math.sqrt(gx * gx + gy * gy);
         if (mag < FLOOR) continue;
         if (mag > CAP) { gx *= CAP / mag; gy *= CAP / mag; }   // so one big edge cannot outvote the fine lines
@@ -204,8 +221,10 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
         contrast[idx] = (smooth[idx] - local) / (local + 8);
         if (local < DARK || local > BRIGHT) bad[idx] = 1;
 
-        // Edge test: compare the mean just below with the mean just above.
-        const b0 = j + 1, b1 = Math.min(nh, j + k2 + 1), a0 = Math.max(0, j - k2), a1 = j;
+        // Edge test: compare the mean over a band below with the mean over a band above, skipping the few
+        // pixels next to this one. A thin line sits in the gap and does not count. A wide step does.
+        const gap = k + 2, wide = k * 3 + 4;
+        const b0 = Math.min(nh, j + gap), b1 = Math.min(nh, j + gap + wide), a0 = Math.max(0, j - gap - wide), a1 = Math.max(0, j - gap + 1);
         if (b1 > b0 && a1 > a0) {
           const below = (P[b1] - P[b0]) / (b1 - b0), above = (P[a1] - P[a0]) / (a1 - a0);
           if (Math.abs(below - above) / (local + 8) > EDGE_LIMIT) edge[j] = 1;
@@ -234,6 +253,18 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     return { score: coverage < 0.05 ? 0 : topMean(contrast, valid, TOP_FRACTION), contrast, valid, coverage };
   }
 
+  // Try each candidate direction on the real line analysis and keep the one that finds the strongest lines.
+  // The right direction scores high because the lines add up along it. At right angles they average out.
+  function bestOrientation(gray, w, h, thetas, maxPixels) {
+    let best = null;
+    for (const theta of thetas) {
+      const f = sampleRect(gray, w, h, theta, maxPixels);
+      const r = analyseField(f.field, f.nw, f.nh, undefined, f.inside);
+      if (!best || r.score > best.r.score) best = { theta, f, r };
+    }
+    return best;
+  }
+
   // Two photos of the same spot with the light from opposite sides.
   // A groove flips its shading when the light flips. A stain or print does not.
   function depth(a, b) {
@@ -250,7 +281,7 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
       grooveShare: reliefScore / (reliefScore + stainScore + 1e-9) };
   }
 
-  const api = { toGray, sampleRect, dominantAngle, analyseField, depth };
+  const api = { toGray, sampleRect, dominantAngle, bestOrientation, analyseField, depth };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.Scan = api;
 })(typeof self !== 'undefined' ? self : this);
@@ -260,6 +291,8 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   const $ = (id) => document.getElementById(id);
   const view = $('view'), vctx = view.getContext('2d');
   const LIVE_W = 512, LIVE_PIXELS = 330000, STILL_MAX_W = 1600, STILL_PIXELS = 2000000;
+  const ORIENT_PIXELS = 120000;   // smaller size used to compare candidate directions quickly
+  const VIEW_FULL = 0.015;        // line contrast (1.5% of brightness) that shows as full red
   const work = document.createElement('canvas'), wctx = work.getContext('2d', { willReadFrequently: true });
   const ovl = document.createElement('canvas'), octx = ovl.getContext('2d');
   const video = document.createElement('video');
@@ -267,7 +300,7 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
   const S = {
     cam: false, mode: 'live',                 // live | still | depth
-    vx: 0, vy: 0, haveAngle: false, theta: 0, // line direction, smoothed over frames
+    angleMode: 'auto', haveAngle: false, theta: 0,   // line direction: auto, or 0 / PI/2 set by hand
     still: null, shotA: null, shotB: null, step: 0,   // step: 0 normal, 1 and 2 = depth check shots
     scores: [], last: 0, lastAngle: -1e9, render: null, pending: null, assets: null,
   };
@@ -312,14 +345,18 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
   // ---- analysis -------------------------------------------------------------------------
 
-  function updateAngle(gray, w, h, fresh) {
+  // Pick the line direction. The grain of the picture gives a first guess. Then every candidate is run through
+  // the real line analysis and the one that finds the strongest lines wins, so a wrong guess gets corrected.
+  // Returns that winning analysis, or null when the direction was set by hand.
+  function orient(gray, w, h, pixels) {
+    if (S.angleMode !== 'auto') { S.theta = S.angleMode; return null; }
     const a = Scan.dominantAngle(gray, w, h);
-    if (a.coherence < 0.05 && S.haveAngle) return;       // no clear lines in view: keep the last direction
-    const k = fresh || !S.haveAngle ? 1 : 0.35;
-    S.vx = (1 - k) * S.vx + k * Math.cos(2 * a.theta);
-    S.vy = (1 - k) * S.vy + k * Math.sin(2 * a.theta);
-    S.haveAngle = true;
-    S.theta = ((0.5 * Math.atan2(S.vy, S.vx)) + Math.PI) % Math.PI;
+    const cands = [a.theta, (a.theta + Math.PI / 2) % Math.PI];
+    if (a.coherence < 0.15) cands.push(0, Math.PI / 2);
+    if (S.haveAngle) cands.unshift(S.theta);     // first, so it wins ties and the picture stays steady
+    const best = Scan.bestOrientation(gray, w, h, cands, pixels);
+    S.theta = best.theta; S.haveAngle = true;
+    return best;
   }
 
   function scan(gray, w, h, pixels) {
@@ -334,13 +371,15 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     const { source, w, h, f, contrast, valid } = R;
     if (view.width !== w || view.height !== h) { view.width = w; view.height = h; }
     vctx.drawImage(source, 0, 0, w, h);
+    vctx.fillStyle = 'rgba(0,0,0,0.35)'; vctx.fillRect(0, 0, w, h);   // dim the picture so the red lines stand out
     if (ovl.width !== f.nw || ovl.height !== f.nh) { ovl.width = f.nw; ovl.height = f.nh; }
-    const img = octx.createImageData(f.nw, f.nh), d = img.data, lim = limit() / 100;
+    // The red is a fixed, generous view of where the lines are. It does not depend on the slider.
+    const img = octx.createImageData(f.nw, f.nh), d = img.data;
     for (let i = 0, p = 0; i < f.inside.length; i++, p += 4) {
       if (!f.inside[i]) continue;
-      if (!valid[i]) { d[p] = 70; d[p + 1] = 120; d[p + 2] = 255; d[p + 3] = 40; continue; }   // ignored: edge, glare or shadow
-      const s = Math.min(1, Math.abs(contrast[i]) / lim);
-      d[p] = 255; d[p + 1] = 40; d[p + 2] = 30; d[p + 3] = s * s * 230;
+      if (!valid[i]) { d[p] = 70; d[p + 1] = 120; d[p + 2] = 255; d[p + 3] = 28; continue; }   // ignored: edge, glare or shadow
+      const s = Math.min(1, Math.abs(contrast[i]) / VIEW_FULL);
+      if (s > 0.1) { d[p] = 255; d[p + 1] = 40; d[p + 2] = 30; d[p + 3] = s * 235; }
     }
     octx.putImageData(img, 0, 0);
     vctx.save();
@@ -387,7 +426,8 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     if (work.width !== LIVE_W || work.height !== h) { work.width = LIVE_W; work.height = h; }
     wctx.drawImage(video, 0, 0, LIVE_W, h);
     const gray = Scan.toGray(wctx.getImageData(0, 0, LIVE_W, h).data, LIVE_W * h);
-    if (t - S.lastAngle > 500) { updateAngle(gray, LIVE_W, h, false); S.lastAngle = t; }
+    if (t - S.lastAngle > 500) { orient(gray, LIVE_W, h, ORIENT_PIXELS); S.lastAngle = t; }
+    else if (S.angleMode !== 'auto') S.theta = S.angleMode;
     const { f, r } = scan(gray, LIVE_W, h, LIVE_PIXELS);
     S.scores.push(r.score); if (S.scores.length > 5) S.scores.shift();
     const score = [...S.scores].sort((a, b) => a - b)[S.scores.length >> 1];
@@ -416,16 +456,16 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   function useShot(shot) {
     $('empty').hidden = true; view.hidden = false;
     S.still = shot; S.shotB = null; S.mode = 'still';
-    updateAngle(shot.gray, shot.w, shot.h, true);
-    const { f, r } = scan(shot.gray, shot.w, shot.h, STILL_PIXELS);
+    const best = orient(shot.gray, shot.w, shot.h, STILL_PIXELS);
+    const { f, r } = best || scan(shot.gray, shot.w, shot.h, STILL_PIXELS);
     show({ kind: 'line', source: shot.canvas, w: shot.w, h: shot.h, f, theta: S.theta, contrast: r.contrast, valid: r.valid, score: r.score, coverage: r.coverage });
     updateButtons();
   }
 
   function finishDepth(a, b) {
     if (a.w !== b.w || a.h !== b.h) { hint('The two photos are different sizes. Take both again.', true); S.step = 0; updateButtons(); return; }
-    updateAngle(a.gray, a.w, a.h, true);
-    const A = scan(a.gray, a.w, a.h, STILL_PIXELS), B = scan(b.gray, b.w, b.h, STILL_PIXELS);
+    const best = orient(a.gray, a.w, a.h, STILL_PIXELS);
+    const A = best ? { f: best.f, r: best.r } : scan(a.gray, a.w, a.h, STILL_PIXELS), B = scan(b.gray, b.w, b.h, STILL_PIXELS);
     const d = Scan.depth(A.r, B.r);
     S.mode = 'depth'; S.step = 0; S.still = a; S.shotB = b;
     show({ kind: 'depth', source: a.canvas, w: a.w, h: a.h, f: A.f, theta: S.theta, contrast: d.relief, valid: d.valid, depth: d });
@@ -479,6 +519,13 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   $('main').onclick = () => onMain().catch((err) => hint(err.message, true));
   $('depth').onclick = onDepth;
   $('send').onclick = sendToClaude;
+  // Safety valve if the automatic direction is ever wrong: auto, then sideways, then up and down.
+  $('angle').onclick = () => {
+    S.angleMode = S.angleMode === 'auto' ? 0 : S.angleMode === 0 ? Math.PI / 2 : 'auto';
+    $('angle').textContent = 'Lines: ' + (S.angleMode === 'auto' ? 'auto' : S.angleMode === 0 ? 'sideways' : 'up and down');
+    if (S.mode === 'depth' && S.still && S.shotB) finishDepth(S.still, S.shotB);
+    else if (S.mode === 'still' && S.still) useShot(S.still);
+  };
   $('sens').addEventListener('input', () => { if (S.mode !== 'live' && S.render) show(S.render); });
 
   (async () => {
