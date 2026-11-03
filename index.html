@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#111111">
+<title>Die Line Scanner</title>
+<style>
+  :root { --bg:#111; --fg:#f2f2f2; --muted:#9a9a9a; --ok:#34c759; --bad:#ff453a; --panel:#1c1c1e; }
+  * { box-sizing:border-box; }
+  html { -webkit-tap-highlight-color:transparent; -webkit-text-size-adjust:100%; overscroll-behavior:none; }
+  body { margin:0; height:100dvh; background:var(--bg); color:var(--fg); font:16px/1.4 -apple-system,system-ui,sans-serif;
+         display:flex; flex-direction:column; overflow:hidden; }
+  header { padding:calc(8px + env(safe-area-inset-top)) 16px 8px; display:flex; justify-content:space-between; align-items:baseline; }
+  #verdict { font-weight:600; font-size:20px; }
+  #score { color:var(--muted); font-variant-numeric:tabular-nums; }
+  main { flex:1; min-height:0; display:flex; align-items:center; justify-content:center; background:#000; }
+  canvas { max-width:100%; max-height:100%; }
+  #msg { padding:16px; color:var(--muted); text-align:center; }
+  footer { background:var(--panel); padding:12px 16px calc(12px + env(safe-area-inset-bottom)); display:grid; gap:10px; }
+  .row { display:flex; gap:8px; align-items:center; }
+  .row label { flex:0 0 92px; color:var(--muted); font-size:14px; }
+  input[type=range] { flex:1; min-width:0; }
+  button { flex:1; font:inherit; font-size:16px; color:var(--fg); background:#2c2c2e; border:0; border-radius:10px;
+           padding:12px 8px; touch-action:manipulation; user-select:none; -webkit-user-select:none; -webkit-touch-callout:none;
+           transition:transform 100ms ease-out, background 100ms; }
+  button:active { transform:scale(.97); background:#3a3a3c; }
+  button[aria-pressed=true] { background:#0a84ff; }
+</style>
+</head>
+<body>
+<header><span id="verdict">Starting...</span><span id="score"></span></header>
+<main><canvas id="view"></canvas><div id="msg" hidden></div></main>
+<footer>
+  <div class="row">
+    <button id="mode" aria-pressed="true">Filtered view</button>
+    <button id="orient">Lines: horizontal</button>
+    <button id="freeze" aria-pressed="false">Freeze</button>
+  </div>
+  <div class="row"><label for="gain">Sensitivity</label><input id="gain" type="range" min="1" max="30" value="10"></div>
+  <div class="row"><label for="limit">Reject above</label><input id="limit" type="range" min="1" max="30" step="0.5" value="6"></div>
+</footer>
+<script src="filter.js"></script>
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const view = $('view'), ctx = view.getContext('2d', { willReadFrequently: true });
+  const work = document.createElement('canvas'), wctx = work.getContext('2d', { willReadFrequently: true });
+  const video = document.createElement('video');
+  video.muted = true; video.playsInline = true; video.setAttribute('playsinline', '');
+  const W = 480;
+  let filtered = true, vertical = false, frozen = false, last = 0;
+
+  function showMessage(text) { $('msg').textContent = text; $('msg').hidden = false; view.hidden = true; $('verdict').textContent = 'No camera'; }
+
+  async function start() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      showMessage('The camera needs a secure page. Open the https:// address, and accept the certificate warning once.');
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: false,
+        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } } });
+      video.srcObject = stream;
+      await video.play();
+      requestAnimationFrame(tick);
+    } catch (e) {
+      showMessage(e.name === 'NotAllowedError'
+        ? 'Camera permission was denied. In Settings > Safari > Camera, allow it, then reload.'
+        : 'Could not start the camera: ' + e.message);
+    }
+  }
+
+  function tick(t) {
+    requestAnimationFrame(tick);
+    if (frozen || t - last < 66 || !video.videoWidth) return;   // about 15 frames a second
+    last = t;
+    const h = Math.round(W * video.videoHeight / video.videoWidth);
+    if (work.width !== W || work.height !== h) { work.width = view.width = W; work.height = view.height = h; }
+    wctx.drawImage(video, 0, 0, W, h);
+    const img = wctx.getImageData(0, 0, W, h), px = img.data;
+    const gray = new Uint8ClampedArray(W * h);
+    for (let i = 0, p = 0; i < gray.length; i++, p += 4) gray[i] = (px[p] * 77 + px[p + 1] * 150 + px[p + 2] * 29) >> 8;
+
+    const { score, signal } = DieLine.analyse(gray, W, h, { vertical });
+    if (filtered) {
+      const gain = +$('gain').value;
+      for (let i = 0, p = 0; i < gray.length; i++, p += 4) {
+        const s = Math.min(1, Math.abs(signal[i]) * gain / 40);
+        px[p] = gray[i] * 0.5 + 255 * s; px[p + 1] = gray[i] * 0.5 * (1 - s); px[p + 2] = gray[i] * 0.5 * (1 - s);
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+
+    const bad = score > +$('limit').value;
+    $('verdict').textContent = bad ? 'Die lines likely' : 'Looks clean';
+    $('verdict').style.color = bad ? 'var(--bad)' : 'var(--ok)';
+    $('score').textContent = 'score ' + score.toFixed(1);
+  }
+
+  $('mode').onclick = (e) => { filtered = !filtered; e.currentTarget.setAttribute('aria-pressed', filtered); e.currentTarget.textContent = filtered ? 'Filtered view' : 'Raw view'; };
+  $('orient').onclick = (e) => { vertical = !vertical; e.currentTarget.textContent = vertical ? 'Lines: vertical' : 'Lines: horizontal'; };
+  $('freeze').onclick = (e) => { frozen = !frozen; e.currentTarget.setAttribute('aria-pressed', frozen); e.currentTarget.textContent = frozen ? 'Resume' : 'Freeze'; };
+  start();
+})();
+</script>
+</body>
+</html>
